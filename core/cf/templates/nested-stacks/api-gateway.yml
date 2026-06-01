@@ -137,9 +137,9 @@ Resources:
       RestApiId: !Ref ApiGatewayRestApi
       DeploymentId: !Ref ApiGatewayDeployment
       MethodSettings:
-        - DataTraceEnabled: true
+        - DataTraceEnabled: false
           HttpMethod: "*"
-          LoggingLevel: INFO
+          LoggingLevel: ERROR
           ResourcePath: "/*"
       AccessLogSetting:
         DestinationArn: !GetAtt ApiGatewayLogGroup.Arn

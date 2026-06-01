@@ -19,6 +19,12 @@ BUCKET_NAME = os.getenv('BUCKET_NAME')
 MAX_RETRIES = 5
 RETRY_DELAY = 5
 CLOUDTRAIL_THROTTLE_PERIOD = 0.5
+FORMULA_PREFIXES = ('=', '+', '-', '@')
+
+def sanitize_spreadsheet_value(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 def main():
     header = [ 'AWSRegion', 'ResourceType', 'ResourceName' ]
@@ -37,7 +43,11 @@ def main():
             cell.font = Font(bold=True)
         for item in resources:
             resource_type, resource_name = item.split('|')
-            worksheet1.append([REGION, resource_type, resource_name])
+            worksheet1.append([
+                sanitize_spreadsheet_value(REGION),
+                sanitize_spreadsheet_value(resource_type),
+                sanitize_spreadsheet_value(resource_name),
+            ])
         workbook.save(filename)
 
         store_report(filename, BUCKET_NAME, object_key)

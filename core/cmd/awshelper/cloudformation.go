@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	cfTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/smithy-go"
 )
 
@@ -530,8 +530,8 @@ func getFailedorCanceledorMissingStackSetInstances(client *cloudformation.Client
 
 		for _, instance := range resp.Summaries {
 			status := string(instance.Status)
-			accountID := aws.StringValue(instance.Account)
-			region := aws.StringValue(instance.Region)
+			accountID := aws.ToString(instance.Account)
+			region := aws.ToString(instance.Region)
 			allDeploymentTargets = append(allDeploymentTargets, accountID)
 			allDeploymentRegions = append(allDeploymentRegions, region)
 

@@ -7,6 +7,7 @@ import (
 	"rrcore/cmd/helper"
 	"rrcore/cmd/logger"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -46,7 +47,11 @@ func LoadAllEnvVars(dirPath string) (map[string]string, map[string]any, map[stri
 			return nil, nil, nil, err
 		}
 
-		for key, value := range exportYamlVars(envVars) {
+		exportedVars, err := exportYamlVars(envVars)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for key, value := range exportedVars {
 			envVarsMap[key] = value
 		}
 	}
@@ -63,7 +68,9 @@ func LoadAllStackNames(filePath string) (*StackNames, error) {
 	}
 	for yamlVar, yamlValue := range envVars {
 		formattedVal := helper.ReplaceEnvVarVal("ProjectName", yamlValue)
-		os.Setenv(yamlVar, formattedVal)
+		if err := os.Setenv(yamlVar, formattedVal); err != nil {
+			return nil, err
+		}
 		if yamlVar == "CloudFormationStackSetAdministrationRoleStackName" {
 			stackNames.CfStackSetAdministrationRoleStackName = formattedVal
 		} else if yamlVar == "CloudFormationStackSetExecutionRoleStackSetName" {
@@ -109,7 +116,7 @@ func LoadAllStackNames(filePath string) (*StackNames, error) {
 
 func loadEnvVarsFromYAML(filePath string) (map[string]string, error) {
 	// Read the YAML file
-	file, err := os.ReadFile(filePath)
+	file, err := os.ReadFile(filePath) // #nosec G304 -- filePath comes from repository configuration discovery.
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +136,7 @@ func loadEnvVarsFromYAML(filePath string) (map[string]string, error) {
 	return envVars, nil
 }
 
-func exportYamlVars(envVars map[string]string) map[string]string {
+func exportYamlVars(envVars map[string]string) (map[string]string, error) {
 	mappedVars := make(map[string]string)
 	for yamlVar, yamlValue := range envVars {
 		mappedVars[yamlVar] = yamlValue
@@ -139,11 +146,31 @@ func exportYamlVars(envVars map[string]string) map[string]string {
 		} else {
 			formattedVal = yamlValue
 		}
-		os.Setenv(yamlVar, formattedVal)
-		logger.Debugln("Set " + yamlVar + "=" + formattedVal)
+		if err := os.Setenv(yamlVar, formattedVal); err != nil {
+			return nil, err
+		}
+		logger.Debugln("Set " + yamlVar + "=" + redactDebugValue(yamlVar, formattedVal))
 	}
 	logger.Debugln("Set DEBUG=" + os.Getenv("DEBUG"))
-	return mappedVars
+	return mappedVars, nil
+}
+
+func redactDebugValue(key, value string) string {
+	if value == "" {
+		return ""
+	}
+	lowerKey := strings.ToLower(key)
+	sensitiveMarkers := []string{"secret", "token", "password", "credential", "webhook", "key"}
+	for _, marker := range sensitiveMarkers {
+		if strings.Contains(lowerKey, marker) {
+			return "[REDACTED]"
+		}
+	}
+	trimmedValue := strings.TrimSpace(value)
+	if len(trimmedValue) > 256 && (strings.HasPrefix(trimmedValue, "{") || strings.HasPrefix(trimmedValue, "[")) {
+		return "[REDACTED]"
+	}
+	return value
 }
 
 func contains(slice []string, item string) bool {

@@ -7,9 +7,9 @@ import (
 	"os"
 	"rrcore/cmd/logger"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func checkIfS3BucketExists(client *s3.Client, bucketName string) (bool, error) {
@@ -56,7 +56,7 @@ func createS3BucketIfNotExists(client *s3.Client, bucketName, region string) err
 func uploadTemplateToS3Bucket(client *s3.Client, cfgRegion, bucketName, bucketKey, templatePath string) (string, error) {
 	var templateUrl string
 
-	file, err := os.Open(templatePath)
+	file, err := os.Open(templatePath) // #nosec G304 -- templatePath is a repository-controlled CloudFormation template path.
 	if err != nil {
 		return "", fmt.Errorf("failed to open file %q: %w", templatePath, err)
 	}

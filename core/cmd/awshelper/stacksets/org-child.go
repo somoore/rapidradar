@@ -3,8 +3,8 @@ package stacksets
 import (
 	"rrcore/cmd/awshelper"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	cfTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func GetOrgChildStackSetConfig(orgMetadata *awshelper.AWSOrgMetadata, stackSetName, templateFile, templateURL string, isStandaloneDeployment, isMainRegionDeployment bool, deploymentTargets, excludedAccounts []string) *awshelper.StackSetProps {

@@ -2911,6 +2911,8 @@ Resources:
       FunctionName: !Ref DetectUnusedResources
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt UnusedResourcesDetectorCronRule.Arn
 
   UnusedResourcesDetectorCronRule:
     Condition: IsEnabledUnusedResourcesDetection
@@ -2971,10 +2973,17 @@ Resources:
           Principal:
             Service:
             - lambda.amazonaws.com
-            AWS:
-            - !Sub arn:aws:iam::${AutomationAccountId}:root
           Action:
             - sts:AssumeRole
+        - Effect: "Allow"
+          Principal:
+            AWS:
+            - !Sub arn:${AWS::Partition}:iam::${AutomationAccountId}:root
+          Action:
+            - sts:AssumeRole
+          Condition:
+            ArnLike:
+              aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${AutomationAccountId}:role/${ProjectName}-*
       Path: "/"
       Policies:
       - PolicyName: ResourceTaggingPolicy
@@ -3166,10 +3175,17 @@ Resources:
           Principal:
             Service:
             - lambda.amazonaws.com
-            AWS:
-            - !Sub arn:aws:iam::${AutomationAccountId}:root
           Action:
             - sts:AssumeRole
+        - Effect: "Allow"
+          Principal:
+            AWS:
+            - !Sub arn:${AWS::Partition}:iam::${AutomationAccountId}:root
+          Action:
+            - sts:AssumeRole
+          Condition:
+            ArnLike:
+              aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${AutomationAccountId}:role/${ProjectName}-*
       Path: "/"
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/ReadOnlyAccess
@@ -3293,7 +3309,6 @@ Resources:
           - Sid: S3Access
             Effect: Allow
             Action:
-            - s3:GetBucketEncryption
             - s3:GetEncryptionConfiguration
             - s3:GetBucketPolicyStatus
             - s3:GetBucketAcl

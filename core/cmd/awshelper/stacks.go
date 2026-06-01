@@ -16,7 +16,7 @@ import (
 	ssmTypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-func DeployCfStackSetAdministrationRoleStack(profile, stackName, templateUrl string) error {
+func DeployCfStackSetAdministrationRoleStack(profile, stackName, templatePath string) error {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithSharedConfigProfile(profile),
 	)
@@ -34,7 +34,7 @@ func DeployCfStackSetAdministrationRoleStack(profile, stackName, templateUrl str
 		return fmt.Errorf("failed to check for existence of CloudFormation Stack %s: %w", stackName, err)
 	}
 	if !stackExists {
-		err = createCloudFormationStack(client, stackName, "", templateUrl, params)
+		err = createCloudFormationStack(client, stackName, templatePath, "", params)
 		if err != nil {
 			return err
 		}

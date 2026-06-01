@@ -6,6 +6,12 @@ import helper
 from response_lib import success, failure
 
 SLACK_BOT_CONFIG_SECRET_NAME = getenv('SLACK_BOT_CONFIG_SECRET_NAME')
+ALLOWED_SLACK_RESPONSE_HOSTS = {"hooks.slack.com", "hooks.slack-gov.com"}
+
+def is_valid_slack_response_url(response_url: str) -> bool:
+    parsed_url = urllib.parse.urlparse(response_url)
+    hostname = (parsed_url.hostname or "").lower().rstrip(".")
+    return parsed_url.scheme == "https" and hostname in ALLOWED_SLACK_RESPONSE_HOSTS
 
 def lambda_handler(event, context):
     try:
@@ -65,8 +71,8 @@ def lambda_handler(event, context):
                 }
         # Validate that response_url is within the Slack domain
         response_url = slack_payload.get("response_url", "")
-        parsed_url = urllib.parse.urlparse(response_url)
-        if not parsed_url.netloc.endswith("slack.com"):
+        if not is_valid_slack_response_url(response_url):
+            parsed_url = urllib.parse.urlparse(response_url)
             LOGGER.error("Invalid response_url domain: %s", parsed_url.netloc)
             return {
                 "statusCode": 400,

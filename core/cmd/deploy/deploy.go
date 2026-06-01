@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	cfTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go/aws"
 
 	"github.com/spf13/cobra"
 )
@@ -59,6 +59,8 @@ var Cmd = &cobra.Command{
 		automationAccountStackTemplatePath := fmt.Sprintf("%s/main-stack.yml", templatesDir)
 		vpcFlowLogsDeliveryKmsKeyStackSetTemplatePath := fmt.Sprintf("%s/stacksets/vpc-flowlogs/delivery-kms-key.yml", templatesDir)
 		vpcFlowLogsDeliveryBucketStackSetTemplatePath := fmt.Sprintf("%s/stacksets/vpc-flowlogs/delivery-bucket.yml", templatesDir)
+		cfStackSetAdministrationRoleTemplatePath := fmt.Sprintf("%s/stacksets/cloudformation/administration-role.yml", templatesDir)
+		cfStackSetExecutionRoleTemplatePath := fmt.Sprintf("%s/stacksets/cloudformation/execution-role.yml", templatesDir)
 		guardDutyDeliveryKmsKeyStackSetTemplatePath := fmt.Sprintf("%s/stacksets/guardduty/delivery-kms-key.yml", templatesDir)
 		guardDutyDeliveryBucketStackSetTemplatePath := fmt.Sprintf("%s/stacksets/guardduty/delivery-bucket.yml", templatesDir)
 		guardDutyAdminDelegationStackSetTemplatePath := fmt.Sprintf("%s/stacksets/guardduty/admin-delegation.yml", templatesDir)
@@ -166,7 +168,7 @@ var Cmd = &cobra.Command{
 			userOffboardingWorkflowEcrImageURI := fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com/%s:latest", orgMetadata.AutomationAccountId, orgMetadata.AutomationAccountRegion, userOffboardingWorkflowEcrRepoName)
 			slackSocketAppEcrImageURI := fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com/%s:latest", orgMetadata.AutomationAccountId, orgMetadata.AutomationAccountRegion, slackSocketAppEcrRepoName)
 			requireGuardDutyCentralLoggingBucket := helper.RequireGuardDutyCentralLoggingBucket(deploymentRegions)
-			cfStackSetExecutionRoleStackSetProps := stacksets.GetCfStackSetExecutionRoleStackSetConfig(orgMetadata, stackNames.CfStackSetExecutionRoleStackSetName, "", "https://s3.amazonaws.com/cloudformation-stackset-sample-templates-us-east-1/AWSCloudFormationStackSetExecutionRole.yml", flowLogsAdminAccountId, isStandaloneDeployment, deploymentTargets, excludedAccounts, standaloneAcountsOUIds, deploymentAccountsOUIds)
+			cfStackSetExecutionRoleStackSetProps := stacksets.GetCfStackSetExecutionRoleStackSetConfig(orgMetadata, stackNames.CfStackSetExecutionRoleStackSetName, cfStackSetExecutionRoleTemplatePath, "", flowLogsAdminAccountId, isStandaloneDeployment, deploymentTargets, excludedAccounts, standaloneAcountsOUIds, deploymentAccountsOUIds)
 			cfStackSetExecutionRoleStackSetInfo := &awshelper.StackSetInstanceStateInfo{}
 			vpcFlowLogsDeliveryKmsKeyStackSetProps := stacksets.GetVpcFlowLogsStackSetsConfig(orgMetadata, stackNames.VpcFlowLogsDeliveryKmsKeyStackSetName, vpcFlowLogsDeliveryKmsKeyStackSetTemplatePath, "", isStandaloneDeployment, true, deploymentTargets, excludedAccounts, standaloneAcountsOUIds)
 			vpcFlowLogsDeliveryKmsKeyStackSetInfo := &awshelper.StackSetInstanceStateInfo{}
@@ -222,10 +224,13 @@ var Cmd = &cobra.Command{
 						logger.Fatalf("Failed to create SecretsManager Secret %s: %v", secretName, err)
 						panic(err)
 					}
+					// #nosec G101 -- CloudFormation secret logical key, not a credential value.
 					if !secretCreated && secretCfKey == "SlackBotConfigSecretName" {
 						spinner.Pause()
 						logger.Warnf("You chose not to create SecretsManager secret '%s'. Slack Interactive alerts will be disabled.", secretName)
-						os.Setenv(secretCfKey, "")
+						if err := os.Setenv(secretCfKey, ""); err != nil {
+							logger.Fatalf("Failed to clear Slack bot config env var: %v", err)
+						}
 						spinner.Resume()
 					}
 				}
@@ -257,7 +262,7 @@ var Cmd = &cobra.Command{
 			// Create CfStackSetAdministrationRoleStack if not exists
 			if deployAllStacks {
 				spinner.Push(fmt.Sprintf("...Deploying %s CloudFormation Stack", stackNames.CfStackSetAdministrationRoleStackName))
-				err = awshelper.DeployCfStackSetAdministrationRoleStack(orgMetadata.AutomationAccountProfileName, stackNames.CfStackSetAdministrationRoleStackName, "https://s3.amazonaws.com/cloudformation-stackset-sample-templates-us-east-1/AWSCloudFormationStackSetAdministrationRole.yml")
+				err = awshelper.DeployCfStackSetAdministrationRoleStack(orgMetadata.AutomationAccountProfileName, stackNames.CfStackSetAdministrationRoleStackName, cfStackSetAdministrationRoleTemplatePath)
 				if err != nil {
 					logger.Fatalf("failed to deploy Cloudformation Stack %s: %v", stackNames.CfStackSetAdministrationRoleStackName, err)
 				}

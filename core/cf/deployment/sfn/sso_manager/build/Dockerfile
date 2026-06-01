@@ -1,11 +1,10 @@
-FROM  --platform=linux/amd64 amd64/python:3.8.16-alpine
+FROM python:3.11-alpine@sha256:db8703afcff4954c737f8c81b02dcfa0e3e93815a3029eb9e31d81a5ad9c4ece
 
-ENV PACKAGES aws-cli
-RUN echo "Updating repos..." && apk update > /dev/null && \
-    echo "Installing packages: ${PACKAGES}..." && apk add --no-cache $PACKAGES > /dev/null
+WORKDIR /app
 
-RUN pip install boto3 openpyxl
+COPY requirements.txt requirements.lock ./
+RUN python3 -m pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY . .
 
-CMD [ "python3", "app.py" ]
+CMD ["python3", "app.py"]

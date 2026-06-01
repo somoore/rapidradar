@@ -8,10 +8,10 @@ import (
 	"rrcore/cmd/logger"
 	"rrcore/cmd/spinner"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmTypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func SSMParameterHandler(profile, parameterName, ssmLong string) error {
