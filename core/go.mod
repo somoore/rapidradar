@@ -8,17 +8,17 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.58.1
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.42.1
-	github.com/aws/aws-sdk-go-v2/service/organizations v1.38.1
+	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.102.2
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.2
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.9
 	github.com/aws/aws-sdk-go-v2/service/ses v1.30.1
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.57.2
-	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17
+	github.com/aws/aws-sdk-go-v2/service/sts v1.42.3
 	github.com/aws/smithy-go v1.26.0
 	github.com/chzyer/readline v1.5.1
-	github.com/gookit/color v1.5.4
+	github.com/gookit/color v1.6.1
 	github.com/nathan-fiscaletti/consolesize-go v0.0.0-20220204101620-317176b6684d
-	github.com/spf13/cobra v1.9.1
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.30.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -42,8 +42,8 @@ require (
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
-	github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 )
