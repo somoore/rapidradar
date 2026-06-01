@@ -32,8 +32,8 @@ EnableCostOptimizerRecommendations: true
 SenderEmailAddress: "user@example.com"
 ReceiverEmailAddressess: "user@example.com"
 SendHourlyAlertsForSeverityTypes: "CRITICAL,HIGH"
-AlertSuppressionResourceTagKeyValue: notifications=suppressed
-AlertSuppressionPermissionSetTagKeyValue: notifications=suppression-admin
+AlertSuppressionResourceTagKeyValue: notifications=suppressed # gitleaks:allow
+AlertSuppressionPermissionSetTagKeyValue: notifications=suppression-admin # gitleaks:allow
 
 EngineerFacingNotificationsApp: slack
 EngineerFacingNotificationsConfigsSecretName: /rapidradar/ENGINEER_FACING_NOTIFICATION_CONFIGS

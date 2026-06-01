@@ -4,8 +4,8 @@ import (
 	"rrcore/cmd/awshelper"
 	"rrcore/cmd/helper"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	cfTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func GetSecurityHubAdminDelegationStackSetConfig(orgMetadata *awshelper.AWSOrgMetadata, stackSetName, templateFile, templateURL string, isStandaloneDeployment, isMainRegionDeployment bool, deploymentTargets, excludedAccounts, standaloneAcountsOUIds []string) *awshelper.StackSetProps {

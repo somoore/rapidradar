@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgTypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 const (
@@ -163,7 +163,9 @@ func getAndSetProfileName(key, long string) (string, error) {
 	spinner.Pause()
 	profileName := helper.AskWithSelection(fmt.Sprintf("Select %s Profile name: ", long), allProfiles)
 	spinner.Resume()
-	os.Setenv(key, profileName)
+	if err := os.Setenv(key, profileName); err != nil {
+		return "", err
+	}
 	return profileName, nil
 }
 

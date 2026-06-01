@@ -11,6 +11,9 @@ import (
 // Debug defines whether debug mode is enabled
 func getDebugValue() (bool, error) {
 	var debugStr = os.Getenv("DEBUG")
+	if debugStr == "" {
+		return false, nil
+	}
 	debug, err := strconv.ParseBool(debugStr)
 	if err != nil {
 		log.Fatalf("Invalid value for DEBUG. Must be true or false")

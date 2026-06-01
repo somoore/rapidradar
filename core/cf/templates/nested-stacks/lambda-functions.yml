@@ -1086,12 +1086,16 @@ Resources:
       FunctionName: !Ref EventsProcessor
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*
   EventsProcessorLambdaSqsInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref EventsProcessor
       Action: lambda:InvokeFunction
       Principal: sqs.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt EventsProcessorLambdaDLQ.Arn
   DlqEventsProcessorEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
@@ -1402,6 +1406,8 @@ Resources:
       FunctionName: !Ref ResourceTrackerReports
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*
   ResourceTrackerReportsLambdaTimeoutAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -1531,6 +1537,8 @@ Resources:
       FunctionName: !Ref UnusedResourcesDetector
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*
   UnusedResourcesDetectorLambdaColdStartAlarm:
     Condition: IsEnabledUnusedResourcesDetection
     Type: AWS::CloudWatch::Alarm
@@ -4860,29 +4868,50 @@ Resources:
       FunctionName: !Sub "${ProjectName}-sfn-executor"
       Description: Triggers Step Function for capturing existing resources
       Role: !GetAtt StepFunctionExecutorLambdaRole.Arn
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          AUTOMATION_ACCOUNT_ID: !Ref AWS::AccountId
       Code:
         ZipFile: |
           import boto3
           import json
           import ast
+          import re
+          from os import getenv
+
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          AUTOMATION_ACCOUNT_ID = getenv('AUTOMATION_ACCOUNT_ID')
+
           def handler(event, context):
-              print(event)
-              client=boto3.client(event['Service'])
-              method=getattr(client, 'start_execution')
+              print({'Service': event.get('Service'), 'KwArgsKeys': list(event.get('KwArgs', {}).keys())})
+              if event.get('Service') != 'stepfunctions':
+                  raise ValueError('Only Step Functions executions are supported.')
+
               kwargs = {}
-              for key, value in event['KwArgs'].items():
+              for key, value in event.get('KwArgs', {}).items():
                   try:
                       if key == 'input':
                           kwargs[key] = json.dumps(value)
-                      else:
+                      elif isinstance(value, str):
                           kwargs[key] = ast.literal_eval(value)
+                      else:
+                          kwargs[key] = value
                   except Exception as e:
                       print(str(e))
                       kwargs[key] = value
+
+              state_machine_arn = kwargs.get('stateMachineArn', '')
+              allowed_state_machine_pattern = rf"^arn:[^:]+:states:[a-z0-9-]+:{AUTOMATION_ACCOUNT_ID}:stateMachine:{re.escape(PROJECT_NAME)}-"
+              if not re.match(allowed_state_machine_pattern, state_machine_arn):
+                  raise ValueError('State machine ARN is outside the RapidRadar project boundary.')
+
+              client = boto3.client('stepfunctions')
               try:
-                  method(**kwargs)
+                  client.start_execution(**kwargs)
               except Exception as error:
                   print(f"[ERROR] {str(error)}")
+                  raise
               return
 
   StepFunctionExecutorLambdaPermissions:
@@ -5224,6 +5253,8 @@ Resources:
       FunctionName: !GetAtt SlackInteractivityLambda.Arn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/interactivity
   SlackRequestVerifierLambdaRole:
     Condition: EnableSlackInteractivity
     Type: AWS::IAM::Role
@@ -5261,6 +5292,8 @@ Resources:
       FunctionName: !GetAtt SlackRequestVerifierLambda.Arn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/interactivity
 Outputs:
   CloudWatchAlarmsSnsTopicARN:
     Description: ARN of SNS topic used for sending CloudWatch Alarms

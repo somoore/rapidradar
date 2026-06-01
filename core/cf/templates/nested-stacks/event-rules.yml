@@ -259,6 +259,38 @@ Resources:
         Condition:
           StringEquals:
             aws:PrincipalOrgID: !Ref OrganizationId
+            events:detail-type:
+              - AWS API Call via CloudTrail
+              - AWS Console Sign In via CloudTrail
+              - AWS Service Event via CloudTrail
+              - Capture Existing Resources
+              - Detect Unused Resources
+              - EC2 Instance State-change Notification
+              - EC2 State Manager Instance Association State Change
+              - GuardDuty Finding
+              - RDS DB Cluster Event
+              - RDS DB Instance Event
+            events:source:
+              - aws.backup
+              - aws.controltower
+              - aws.ec2
+              - aws.eks
+              - aws.elasticfilesystem
+              - aws.elasticloadbalancing
+              - aws.fsx
+              - aws.guardduty
+              - aws.iam
+              - aws.identitystore
+              - aws.organizations
+              - aws.rds
+              - aws.s3
+              - aws.secretsmanager
+              - aws.signin
+              - aws.ssm
+              - capture-existing-resources
+              - detect-unused-resources
+              - aws.sso
+              - aws.sso-directory
 
   EventBusRuleEC2ResourcesManager:
     Type: AWS::Events::Rule

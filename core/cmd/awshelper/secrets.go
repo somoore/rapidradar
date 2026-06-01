@@ -11,10 +11,10 @@ import (
 	"rrcore/cmd/spinner"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	secretTypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func SecretsHandler(profile, secretCfKey, secretName, secretDesc string, secretDependentKeys map[string]string) (bool, error) {

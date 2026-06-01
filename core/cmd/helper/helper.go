@@ -169,7 +169,9 @@ func GetNonEmptyInput(varName, val string) {
 	attempts := 0
 	for attempts < maxRetries && IsValEmpty(val) {
 		val = Ask(fmt.Sprintf("%s cannot be empty. Please provide value for %s: ", varName, varName))
-		os.Setenv(varName, val)
+		if err := os.Setenv(varName, val); err != nil {
+			panic(err)
+		}
 		attempts++
 	}
 	if IsValEmpty(val) {
@@ -183,7 +185,7 @@ func ReplaceEnvVarVal(key, input string) string {
 }
 
 func ReadTemplateFile(filePath string) (string, error) {
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filePath) // #nosec G304 -- template paths are repository-controlled deployment inputs.
 	if err != nil {
 		return "", fmt.Errorf("failed to read template file: %w", err)
 	}

@@ -1,36 +1,95 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 if ! [ -n "$DEBUG" ]; then
   export DEBUG=false
 fi
 
-GO_VERSION="1.22.5"
+GO_VERSION="1.25.10"
 GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_DOWNLOAD_URL="https://go.dev/dl/${GO_TARBALL}"
+GO_LINUX_AMD64_SHA256="42d4f7a32316aa66591eca7e89867256057a4264451aca10570a715b3637ba70"
+GO_DARWIN_AMD64_SHA256="802d058e43d409939a9477b24360a74835c190623c337c5809b08bc29d142f53"
+GO_DARWIN_ARM64_SHA256="0d1aaaff516b055f6903ba6d0e146df3a58113288d55250985b50344d2bbbabc"
+GO_WINDOWS_AMD64_SHA256="cb24fc58f4fee5005bbf20e90a2a7034892f9ede71a4783c61285297cb7b799e"
+
+verify_sha256() {
+    local file_path="$1"
+    local expected_sha256="$2"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s  %s\n' "$expected_sha256" "$file_path" | sha256sum -c -
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s  %s\n' "$expected_sha256" "$file_path" | shasum -a 256 -c -
+    else
+        echo "❌ sha256sum or shasum is required to verify the Go download."
+        exit 1
+    fi
+}
+
+download_and_verify() {
+    local url="$1"
+    local output_path="$2"
+    local expected_sha256="$3"
+
+    curl --fail --location --show-error --proto '=https' --tlsv1.2 --output "$output_path" "$url"
+    verify_sha256 "$output_path" "$expected_sha256"
+}
 
 install_go_linux() {
     echo "🔹 Installing Go ${GO_VERSION} on Linux..."
-    curl -OL $GO_DOWNLOAD_URL
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+    local go_archive="${tmp_dir}/${GO_TARBALL}"
+    download_and_verify "$GO_DOWNLOAD_URL" "$go_archive" "$GO_LINUX_AMD64_SHA256"
     sudo rm -rf /usr/local/go
-    sudo tar -C /usr/local -xzf $GO_TARBALL
-    export PATH=$PATH:/usr/local/go/bin
+    sudo tar -C /usr/local -xzf "$go_archive"
+    export PATH="$PATH:/usr/local/go/bin"
     echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
     echo "✅ Go installed successfully!"
 }
 
 install_go_mac() {
     echo "🔹 Installing Go ${GO_VERSION} on macOS..."
-    brew install go@${GO_VERSION%.*} || brew upgrade go
+    local arch
+    local pkg_name
+    local expected_sha256
+    arch="$(uname -m)"
+    case "$arch" in
+        arm64)
+            pkg_name="go${GO_VERSION}.darwin-arm64.pkg"
+            expected_sha256="$GO_DARWIN_ARM64_SHA256"
+            ;;
+        x86_64)
+            pkg_name="go${GO_VERSION}.darwin-amd64.pkg"
+            expected_sha256="$GO_DARWIN_AMD64_SHA256"
+            ;;
+        *)
+            echo "❌ Unsupported macOS architecture: ${arch}"
+            exit 1
+            ;;
+    esac
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+    local go_pkg="${tmp_dir}/${pkg_name}"
+    download_and_verify "https://go.dev/dl/${pkg_name}" "$go_pkg" "$expected_sha256"
+    sudo installer -pkg "$go_pkg" -target /
     echo "✅ Go installed successfully!"
 }
 
 install_go_windows() {
     echo "🔹 Installing Go ${GO_VERSION} on Windows..."
     POWERSHELL_CMD='
-    $GO_VERSION="1.22.5";
+    $GO_VERSION="1.25.10";
+    $EXPECTED_SHA256="cb24fc58f4fee5005bbf20e90a2a7034892f9ede71a4783c61285297cb7b799e";
     $URL="https://go.dev/dl/go$GO_VERSION.windows-amd64.msi";
     $INSTALLER="C:\Windows\Temp\go$GO_VERSION.msi";
-    Invoke-WebRequest -Uri $URL -OutFile $INSTALLER;
+    Invoke-WebRequest -Uri $URL -OutFile $INSTALLER -UseBasicParsing;
+    $ACTUAL_SHA256=(Get-FileHash -Algorithm SHA256 $INSTALLER).Hash.ToLowerInvariant();
+    if ($ACTUAL_SHA256 -ne $EXPECTED_SHA256) {
+        Remove-Item -Path $INSTALLER -Force;
+        throw "Go installer checksum mismatch. Expected $EXPECTED_SHA256 but got $ACTUAL_SHA256";
+    }
     Start-Process -Wait -FilePath msiexec.exe -ArgumentList "/i $INSTALLER /quiet /norestart";
     [System.Environment]::SetEnvironmentVariable("Path", $Env:Path + ";C:\Go\bin", [System.EnvironmentVariableTarget]::Machine);
     Remove-Item -Path $INSTALLER -Force;
@@ -56,5 +115,6 @@ if ! command -v go &> /dev/null; then
     install_go
 fi
 
-go build -o rrcore .
+go mod verify
+go build -trimpath -o rrcore .
 ./rrcore "$@"

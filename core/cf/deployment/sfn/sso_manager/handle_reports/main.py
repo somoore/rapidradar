@@ -23,6 +23,12 @@ if "APP_CONFIG" in NOTIFICATION_CONFIGS:
 else:
     WEBHOOK_URLS = NOTIFICATION_CONFIGS.get("WEBHOOK_URL")
 WEBHOOK_URLS = WEBHOOK_URLS.replace(' ', '').split(',')
+FORMULA_PREFIXES = ('=', '+', '-', '@')
+
+def sanitize_spreadsheet_value(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 def lambda_handler(event, context):
     logger.info('PROCESSING NEW EVENT: %s', event)
@@ -60,9 +66,9 @@ def lambda_handler(event, context):
                             col_index = cell.column - 1
                             if row_index == 0:
                                 bold_format = workbook_write.add_format({'bold': True})
-                                worksheet_write.write(row_index, col_index, cell.value, bold_format)
+                                worksheet_write.write(row_index, col_index, sanitize_spreadsheet_value(cell.value), bold_format)
                             else:
-                                worksheet_write.write(row_index, col_index, cell.value)
+                                worksheet_write.write(row_index, col_index, sanitize_spreadsheet_value(cell.value))
                 except FileNotFoundError:
                     logger.error("No report for %s", account)
             workbook_write.close()

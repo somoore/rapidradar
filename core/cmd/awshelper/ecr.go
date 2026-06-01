@@ -1,16 +1,25 @@
 package awshelper
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"rrcore/cmd/logger"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrTypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+)
+
+var (
+	awsAccountIDPattern = regexp.MustCompile(`^\d{12}$`)
+	awsRegionPattern    = regexp.MustCompile(`^[a-z]{2}(?:-[a-z]+)+-\d$`)
+	ecrImageURIPattern  = regexp.MustCompile(`^\d{12}\.dkr\.ecr\.[a-z]{2}(?:-[a-z]+)+-\d\.amazonaws\.com/[a-z0-9]+(?:[._/-][a-z0-9]+)*:[A-Za-z0-9_.-]+$`)
+	ecrRepoNamePattern  = regexp.MustCompile(`^[a-z0-9]+(?:[._/-][a-z0-9]+)*$`)
 )
 
 func checkIfEcrRepoExists(client *ecr.Client, repoName string) (bool, error) {
@@ -77,6 +86,10 @@ func DeleteEcrRepoIfExists(client *ecr.Client, repoName string) error {
 }
 
 func BuildAndPushDockerImage(profile, repoName, imageUri, contextDir, automationAccountId, region string) error {
+	if err := validateEcrBuildInputs(profile, repoName, imageUri, contextDir, automationAccountId, region); err != nil {
+		return err
+	}
+
 	logger.Debugln("...Checking if docker is running")
 	dockerInfoCmd := exec.Command("docker", "info")
 	err := dockerInfoCmd.Run()
@@ -88,37 +101,88 @@ func BuildAndPushDockerImage(profile, repoName, imageUri, contextDir, automation
 	logger.Debugln("🔑 Logging in to AWS ECR...")
 	debugMode := os.Getenv("DEBUG") == "true"
 
-	loginCmdStr := fmt.Sprintf("aws ecr get-login-password --profile %s | docker login --username AWS --password-stdin %s.dkr.ecr.%s.amazonaws.com", profile, automationAccountId, region)
-	loginCmd := exec.Command("sh", "-c", loginCmdStr)
-	if !debugMode {
-		loginCmd.Stdout = nil
-		loginCmd.Stderr = nil
-	} else {
-		loginCmd.Stdout = os.Stdout
-		loginCmd.Stderr = os.Stderr
+	var password bytes.Buffer
+	passwordCmd := exec.Command("aws", "ecr", "get-login-password", "--profile", profile, "--region", region)
+	passwordCmd.Stdout = &password
+	if debugMode {
+		passwordCmd.Stderr = os.Stderr
 	}
-	err = loginCmd.Run()
-	if err != nil {
+	if err = passwordCmd.Run(); err != nil {
+		return fmt.Errorf("failed to get AWS ECR login password: %w", err)
+	}
+
+	// #nosec G204 -- fixed executable with argv-only arguments; account and region are validated before use.
+	loginCmd := exec.Command("docker", "login", "--username", "AWS", "--password-stdin", ecrRegistryURL(automationAccountId, region))
+	loginCmd.Stdin = &password
+	if err = runCommand(loginCmd, debugMode); err != nil {
 		return fmt.Errorf("failed to login to AWS ECR: %w", err)
 	}
 	logger.Debugln("✅ Logged in successfully!")
 
 	logger.Debugf("🐳 Building and Pushing Image to AWS ECR '%s'...", repoName)
-	buildPushCmdStr := fmt.Sprintf("docker build --platform=linux/amd64 -t %s %s && docker push %s", imageUri, contextDir, imageUri)
-	buildPushCmd := exec.Command("sh", "-c", buildPushCmdStr)
-	if !debugMode {
-		buildPushCmd.Stdout = nil
-		buildPushCmd.Stderr = nil
-	} else {
-		buildPushCmd.Stdout = os.Stdout
-		buildPushCmd.Stderr = os.Stderr
+	buildCmd := exec.Command("docker", "build", "--platform=linux/amd64", "-t", imageUri, contextDir)
+	if err = runCommand(buildCmd, debugMode); err != nil {
+		return fmt.Errorf("failed to build Docker image: %w", err)
 	}
-	err = buildPushCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to build and Push Docker Image: %w", err)
+	pushCmd := exec.Command("docker", "push", imageUri)
+	if err = runCommand(pushCmd, debugMode); err != nil {
+		return fmt.Errorf("failed to push Docker image: %w", err)
 	}
 	logger.Debugf("✅ Docker Image built and pushed to AWS ECR %s successfully!", repoName)
 	return nil
+}
+
+func runCommand(cmd *exec.Cmd, debugMode bool) error {
+	if debugMode {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errText := strings.TrimSpace(stderr.String())
+		if errText != "" {
+			return fmt.Errorf("%w: %s", err, errText)
+		}
+		return err
+	}
+	return nil
+}
+
+func validateEcrBuildInputs(profile, repoName, imageUri, contextDir, automationAccountId, region string) error {
+	for name, value := range map[string]string{
+		"profile":             profile,
+		"repoName":            repoName,
+		"imageUri":            imageUri,
+		"contextDir":          contextDir,
+		"automationAccountId": automationAccountId,
+		"region":              region,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s cannot be empty", name)
+		}
+		if strings.ContainsRune(value, '\x00') {
+			return fmt.Errorf("%s cannot contain NUL bytes", name)
+		}
+	}
+	if !awsAccountIDPattern.MatchString(automationAccountId) {
+		return fmt.Errorf("invalid automation account ID %q", automationAccountId)
+	}
+	if !awsRegionPattern.MatchString(region) {
+		return fmt.Errorf("invalid AWS region %q", region)
+	}
+	if !ecrRepoNamePattern.MatchString(repoName) {
+		return fmt.Errorf("invalid ECR repository name %q", repoName)
+	}
+	if !ecrImageURIPattern.MatchString(imageUri) {
+		return fmt.Errorf("invalid ECR image URI %q", imageUri)
+	}
+	return nil
+}
+
+func ecrRegistryURL(accountID, region string) string {
+	return fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", accountID, region)
 }
 
 func ImageExistsInECR(profile, repoName, imageUri string) (bool, error) {

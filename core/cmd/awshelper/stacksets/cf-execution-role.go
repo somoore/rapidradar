@@ -4,8 +4,8 @@ import (
 	"rrcore/cmd/awshelper"
 	"rrcore/cmd/helper"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	cfTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 func GetCfStackSetExecutionRoleStackSetConfig(orgMetadata *awshelper.AWSOrgMetadata, stackSetName, templateFile, templateURL, flowLogsAdminAccountId string, isStandaloneDeployment bool, deploymentTargets, excludedAccounts, standaloneAcountsOUIds, deploymentAccountsOUIds []string) *awshelper.StackSetProps {
