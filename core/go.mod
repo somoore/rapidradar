@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.2
 	github.com/aws/aws-sdk-go-v2/service/ses v1.30.1
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.57.2
-	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17
+	github.com/aws/aws-sdk-go-v2/service/sts v1.42.3
 	github.com/aws/smithy-go v1.26.0
 	github.com/chzyer/readline v1.5.1
 	github.com/gookit/color v1.5.4
