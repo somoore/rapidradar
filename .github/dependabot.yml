@@ -5,27 +5,30 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: gomod
     directory: /core
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      go-modules:
+        patterns:
+          - "*"
 
   - package-ecosystem: pip
-    directory: /core/cf/deployment
+    directories:
+      - /core/cf/deployment
+      - /core/cf/deployment/slack_socket_app
+      - /core/cf/deployment/sfn/sso_manager/build
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directory: /core/cf/deployment/slack_socket_app
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directory: /core/cf/deployment/sfn/sso_manager/build
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
