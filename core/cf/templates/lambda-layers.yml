@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates layers required for RapidRadar solution
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - OrganizationId
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      OrganizationId:
+        default: Organization Id
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  OrganizationId:
+    Type: String
+    Description: ID of current organization to allow the child accounts to send events to event bus
+
+Resources:
+  Boto3Layer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/boto3/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-boto3-layer"
+
+  Boto3LayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref Boto3Layer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  HttpLib2Layer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/httplib2/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-httplib2-layer"
+
+  HttpLib2LayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref HttpLib2Layer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  PdpyrasLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/pdpyras/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-pdpyras-layer"
+
+  PdpyrasLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref PdpyrasLayer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  ParliamentLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/parliament/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-parliament-layer"
+
+  ParliamentLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref ParliamentLayer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  PytzLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/pytz/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-pytz-layer"
+
+  PytzLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref PytzLayer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  RequestsLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/requests/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-requests-layer"
+
+  RequestsLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref RequestsLayer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  OpenPyxlXlsxLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: ../.cloudformation/layers/openpyxl_xlsx/
+      CompatibleRuntimes:
+      - python3.11
+      LayerName: !Sub "${ProjectName}-openpyxl-xlsx-layer"
+
+  OpenPyxlXlsxLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref OpenPyxlXlsxLayer
+      OrganizationId: !Ref OrganizationId
+      Principal: "*"
+
+  SecretsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "${ProjectName} Secrets Key"
+      EnableKeyRotation: True
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: !Sub "${ProjectName}-secrets-key"
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Action: 'kms:*'
+            Resource: '*'
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+          - Sid: Allow alias creation during setup
+            Effect: Allow
+            Action: kms:CreateAlias
+            Condition:
+              StringEquals:
+                kms:CallerAccount: !Sub ${AWS::AccountId}
+                kms:ViaService: !Sub cloudformation.${AWS::Region}.amazonaws.com
+            Resource: '*'
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+          - Sid: Allow use of the KMS Key for Organization
+            Effect: Allow
+            Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+            Resource: "*"
+            Principal:
+              AWS: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId
+
+  SecretsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${ProjectName}-secrets-key"
+      TargetKeyId: !Ref SecretsKey
+
+  LambdaLayersARNSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN"
+      Description: Version ARNs for Shared Lambda Layers
+      SecretString:
+        Fn::Join:
+        - ','
+        - - !Sub '{"BOTO3_LAYER_ARN":"${Boto3Layer}"'
+          - !Sub '"HTTPLIB2_LAYER_ARN": "${HttpLib2Layer}"'
+          - !Sub '"PDPYRAS_LAYER_ARN": "${PdpyrasLayer}"'
+          - !Sub '"PARLIAMENT_LAYER_ARN": "${ParliamentLayer}"'
+          - !Sub '"PYTZ_LAYER_ARN": "${PytzLayer}"'
+          - !Sub '"REQUESTS_LAYER_ARN": "${RequestsLayer}"'
+          - !Sub '"OPENPYXL_XLSX_LAYER_ARN": "${OpenPyxlXlsxLayer}"}'
+      KmsKeyId: !GetAtt SecretsKey.Arn
+
+  LambdaLayersARNSecretPolicy:
+    Type: AWS::SecretsManager::ResourcePolicy
+    Properties:
+      SecretId: !Ref LambdaLayersARNSecret
+      ResourcePolicy:
+        Version: 2012-10-17
+        Statement:
+          - Action: secretsmanager:GetSecretValue
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Resource: '*'
+            Condition:
+              ForAnyValue:StringEquals:
+                secretsmanager:VersionStage: AWSCURRENT
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId

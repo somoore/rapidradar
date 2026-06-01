@@ -1,0 +1,12 @@
+# Keep the checked-in sample YAML files, but ignore local overrides and secrets.
+*.local.yml
+*.local.yaml
+local*.yml
+local*.yaml
+secrets*.yml
+secrets*.yaml
+.env
+.env.*
+env.sh
+*.pem
+*.key

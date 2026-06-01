@@ -1,0 +1,25 @@
+CloudFormationStackSetAdministrationRoleStackName: "$ProjectName-cloudformation-stackset-administration-role"
+CloudFormationStackSetExecutionRoleStackSetName: "$ProjectName-cloudformation-stackset-execution-role"
+
+LambdaLayersStackName: "$ProjectName-lambda-layers"
+ManagementAccountStackName: "$ProjectName-management-account-stack"
+AutomationDynamoDbTablesStackName: "$ProjectName-automation-dynamodb-stack"
+AutomationAccountSecretsStackName: "$ProjectName-automation-secrets-stack"
+AutomationAccountStackName: "$ProjectName-main-stack"
+
+VpcFlowLogsDeliveryKmsKeyStackSetName: "$ProjectName-vpc-flow-logs-delivery-kms-key"
+VpcFlowLogsDeliveryBucketStackSetName: "$ProjectName-vpc-flow-logs-delivery-s3-bucket"
+
+GuardDutyDeliveryKmsKeyStackSetName: "$ProjectName-guardduty-delivery-kms-key"
+GuardDutyDeliveryBucketStackSetName: "$ProjectName-guardduty-delivery-s3-bucket"
+GuardDutyAdminDelegationStackSetName: "$ProjectName-guardduty-admin-delegation"
+GuardDutyEnablerStackSetName: "$ProjectName-guardduty-enabler"
+
+InspectorAdminDelegationStackSetName: "$ProjectName-inspector-admin-delegation"
+InspectorEnablerStackSetName: "$ProjectName-inspector-enabler"
+
+SecurityHubAdminDelegationStackSetName: "$ProjectName-securityhub-admin-delegation"
+SecurityHubEnablerStackSetName: "$ProjectName-securityhub-enabler"
+
+SSMDocumentStackName: "$ProjectName-ssm-document"
+OrgChildStackSetName: "$ProjectName-org-child-stack-set"

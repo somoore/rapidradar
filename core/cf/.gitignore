@@ -1,0 +1,12 @@
+# CloudFormation packaging output
+.cloudformation/
+packaged-template.yml
+
+# Local build artifacts
+*.zip
+*.tar.gz
+*.log
+
+# Python cache generated while packaging Lambda code
+__pycache__/
+*.py[cod]

@@ -1,0 +1,720 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Delegates Admin for SecurityHub in all regions"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - SecurityHubAdminAccountId
+          - AutomationAccountId
+      - Label:
+          default: SecurityHub Configuration
+        Parameters:
+          - EnableSecurityBestPracticesStandard
+          - SecurityBestPracticesStandardVersion
+          - EnableCISStandard
+          - CISStandardVersion
+          - EnablePCIStandard
+          - PCIStandardVersion
+          - EnableNISTStandard
+          - NISTStandardVersion
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      SecurityHubAdminAccountId:
+        default: ID of AWS Account for SecurityHub Admin Delegation
+      AutomationAccountId:
+        default: Automation Account ID
+      EnableSecurityBestPracticesStandard:
+        default: Enable AWS Foundational Security Best Practices Standard
+      SecurityBestPracticesStandardVersion:
+        default: Security Best Practices Standard Version
+      EnableCISStandard:
+        default: Enable CIS Standard
+      CISStandardVersion:
+        default: CIS Standard Version
+      EnablePCIStandard:
+        default: Enable PCI Standard
+      PCIStandardVersion:
+        default: PCI Standard Version
+      EnableNISTStandard:
+        default: Enable NIST Standard
+      NISTStandardVersion:
+        default: NIST Standard Version
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  SecurityHubAdminAccountId:
+    Type: String
+    Description: Account ID
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  EnableSecurityBestPracticesStandard:
+    Type: String
+    Description: Indicates whether to enable the AWS Foundational Security Best Practices Standard.
+    AllowedValues:
+    - "true"
+    - "false"
+  SecurityBestPracticesStandardVersion:
+    Type: String
+    Description: SBP Standard Version
+    AllowedValues: [1.0.0]
+  EnableCISStandard:
+    Type: String
+    Description: Indicates whether to enable the CIS AWS Foundations Benchmark Standard.
+    AllowedValues:
+    - "true"
+    - "false"
+  CISStandardVersion:
+    Type: String
+    Description: CIS Standard Version
+    AllowedValues: [1.2.0, 1.4.0]
+  EnablePCIStandard:
+    Type: String
+    Description: Indicates whether to enable the Payment Card Industry Data Security Standard (PCI DSS).
+    AllowedValues:
+    - "true"
+    - "false"
+  PCIStandardVersion:
+    Type: String
+    Description: PCI Standard Version
+    AllowedValues: [3.2.1]
+  EnableNISTStandard:
+    Type: String
+    Description: Indicates whether to enable the National Institute of Standards and Technology (NIST) SP 800-53 Rev. 5.
+    AllowedValues:
+    - "true"
+    - "false"
+  NISTStandardVersion:
+    Type: String
+    Description: NIST Standard Version
+    AllowedValues: [5.0.0]
+
+Resources:
+  DelegateAdminAccountLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:DeregisterDelegatedAdministrator"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            - iam:DeleteServiceLinkedRole
+            Resource: '*'
+      - PolicyName: ConfigReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecurityHubAccess
+            Effect: Allow
+            Action:
+            - config:DescribeConfigurationRecorders
+            - config:DescribeConfigurationRecorderStatus
+            Resource: '*'
+      - PolicyName: SecurityHubReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecurityHubAccess
+            Effect: Allow
+            Action:
+            - securityhub:EnableSecurityHub
+            - securityhub:GetEnabledStandards
+            - securityhub:BatchEnableStandards
+            - securityhub:BatchDisableStandards
+            - securityhub:DisableSecurityHub
+            - securityhub:EnableOrganizationAdminAccount
+            - securityhub:DisableOrganizationAdminAccount
+            - securityhub:ListOrganizationAdminAccounts
+            Resource: '*'
+
+  EnableServiceAccessLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-securityhub-enable-service-access"
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          from botocore.exceptions import ClientError
+          import json
+          from time import sleep
+          import requests
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              retry_attempts = 0
+              max_retry_attempts = 5
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      if check_aws_service_access(client, principal_name) is False:
+                          print(f"Enabling service access for {principal_name} in Management Account")
+                          data = method(ServicePrincipal=principal_name)
+                      else:
+                          print(f"Organizations service access for {principal_name} is already enabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      print(f"Disabling service access for {principal_name}")
+                      if check_aws_service_access(client, principal_name) is True:
+                          while retry_attempts < max_retry_attempts:
+                              try:
+                                  data = method(ServicePrincipal=principal_name)
+                                  break
+                              except ClientError as error:
+                                  if error.response['Error']['Code'] == 'ConcurrentModificationException' and retry_attempts < max_retry_attempts:
+                                      retry_attempts += 1
+                                      print(f"Request conflicts with another attempt to modify the same entity. Retrying again in 30 seconds")
+                                      sleep(30)
+                                      continue
+                                  raise error
+                      else:
+                          print(f"Organizations service access for {principal_name} is already disabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def check_aws_service_access(org_client, principal_name) -> bool:
+              aws_service_access_enabled = False
+              print(f"Checking service access for {principal_name}...")
+              try:
+                  org_svc_response = org_client.list_aws_service_access_for_organization()
+                  for service in org_svc_response["EnabledServicePrincipals"]:
+                      if service["ServicePrincipal"] == principal_name:
+                          aws_service_access_enabled = True
+                          return True
+              except org_client.exceptions.AccessDeniedException as error:
+                  print(f"Unable to check service access for {principal_name}: {error}")
+              return aws_service_access_enabled
+
+  EnableManagementSecurityHubLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-securityhub-management-enabler"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          from os import getenv
+          from time import sleep
+          import ast
+          import requests
+          import boto3
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              config_client=boto3.client("config")
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_security_hub')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      standard_dict: dict = get_standard_dictionary(
+                          kwargs["SecurityBestPracticesVersion"],
+                          kwargs["CISVersion"],
+                          kwargs["PCIVersion"],
+                          kwargs["NISTVersion"]
+                      )
+                      try:
+                          print("Enabling SecurityHub...")
+                          data = method(EnableDefaultStandards=False)
+                      except client.exceptions.ResourceConflictException:
+                          print(f"SecurityHub already enabled in {ACCOUNT_ID} {CURRENT_REGION}")
+                      print("Checking if Config is enabled...")
+                      if is_config_enabled(config_client):
+                          process_standards(client, standard_dict, kwargs["StandardsToEnable"])
+                      print("Waiting 20 seconds before exiting..")
+                      sleep(20)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_security_hub')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      data = method()
+                      api_call_details = {"API_Call": "securityhub:DisableSecurityHub", "API_Response": data}
+                      print(api_call_details)
+                      print(f"SecurityHub disabled in {CURRENT_REGION}")
+                  except client.exceptions.ResourceNotFoundException:
+                      print(f"SecurityHub is not enabled in {CURRENT_REGION}")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_config_enabled(config_client) -> bool:
+              if len(config_client.describe_configuration_recorders()["ConfigurationRecorders"]) > 0 and config_client.describe_configuration_recorder_status()["ConfigurationRecordersStatus"][0]["recording"]:
+                  return True
+              return False
+          def get_standard_dictionary(sbp_version: str, cis_version: str, pci_version: str, nist_version: str) -> dict:
+              cis_standard_arn: str = f"arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/{cis_version}"
+              if cis_version != "1.2.0":
+                  cis_standard_arn = f"arn:aws:securityhub:{CURRENT_REGION}::standards/cis-aws-foundations-benchmark/v/{cis_version}"
+              return {
+                  "cis": {
+                      "name": "CIS AWS Foundations Benchmark Security Standard",
+                      "enabled": False,
+                      "standard_arn": cis_standard_arn,
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/cis-aws-foundations-benchmark/v/{cis_version}",
+                  },
+                  "pci": {
+                      "name": "Payment Card Industry Data Security Standard (PCI DSS)",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/pci-dss/v/{pci_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/pci-dss/v/{pci_version}",
+                  },
+                  "nist": {
+                      "name": "National Institute of Standards and Technology (NIST) SP 800-53 Rev. 5",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/nist-800-53/v/{nist_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/nist-800-53/v/{nist_version}",
+                  },
+                  "sbp": {
+                      "name": "AWS Foundational Security Best Practices Standard",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/aws-foundational-security-best-practices/v/{sbp_version}",
+                      "subscription_arn": (
+                          f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/aws-foundational-security-best-practices/v/{sbp_version}"
+                      ),
+                  },
+              }
+          def process_standards(securityhub_client, standard_dict: dict, standards_to_enable: dict) -> None:
+              formatted_standards_to_enable = {}
+              for key, value in standards_to_enable.items():
+                  if value.lower() == 'true':
+                      formatted_standards_to_enable[key] = True
+                  elif value.lower() == 'false':
+                      formatted_standards_to_enable[key] = False
+              standard_dict = get_current_enabled_standards(securityhub_client, standard_dict)
+              for standard, status in standard_dict.items():
+                  process_standard(securityhub_client, formatted_standards_to_enable, status, standard)
+          def get_current_enabled_standards(securityhub_client, standard_dict: dict) -> dict:
+              standards_subscriptions = get_enabled_standards(securityhub_client)
+              if all_standards_in_status(standards_subscriptions, "READY", securityhub_client):
+                  for item in standards_subscriptions:
+                      if standard_dict["sbp"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["sbp"]["enabled"] = True
+                      if standard_dict["cis"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["cis"]["enabled"] = True
+                      if standard_dict["pci"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["pci"]["enabled"] = True
+                      if standard_dict["nist"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["nist"]["enabled"] = True
+              return standard_dict
+          def get_enabled_standards(securityhub_client) -> list:
+              standards_subscriptions = []
+              try:
+                  paginator = securityhub_client.get_paginator("get_enabled_standards")
+                  for page in paginator.paginate():
+                      for standards_subscription in page["StandardsSubscriptions"]:
+                          standards_subscriptions.append(standards_subscription)
+              except securityhub_client.exceptions.InvalidAccessException:
+                  print("Security Hub is not enabled.")
+              return standards_subscriptions
+          def all_standards_in_status(standards_subscriptions: list, standards_status: str, securityhub_client) -> bool:
+              for standards_subscription in standards_subscriptions:
+                  print("entered all_standards_in_status function...")
+                  print(f"standard - {standards_subscription} : {standards_subscription.get('StandardsStatus')}")
+                  incomplete_status_resolved = True
+                  if standards_subscription.get("StandardsStatus") == "INCOMPLETE":
+                      incomplete_status_resolved = disable_then_enable_standard(
+                          securityhub_client, standards_subscription.get("StandardsSubscriptionArn"), standards_subscription.get("StandardsArn")
+                      )
+                  if standards_subscription.get("StandardsStatus") != standards_status and standards_subscription.get("StandardsStatus") != "INCOMPLETE":
+                      return False
+                  if incomplete_status_resolved is False:
+                      return False
+              return True
+          def disable_then_enable_standard(securityhub_client, standards_subscription_arn: str, standards_arn: str) -> bool:
+              print("Entered disable_then_enable_standard function...")
+              print(f"...disabling {standards_subscription_arn} standard")
+              securityhub_client.batch_disable_standards(StandardsSubscriptionArns=[standards_subscription_arn])
+              sleep(5)
+              standard_enable_retry_sleep = 5
+              standard_enable_retry = 0
+              while standard_enable_retry < 10:
+                  try:
+                      print(f"...enabling {standards_subscription_arn} standard")
+                      securityhub_client.batch_enable_standards(StandardsSubscriptionRequests=[{
+                          "StandardsArn": standards_arn,
+                      }])
+                      return True
+                  except securityhub_client.exceptions.InvalidInputException as error:
+                      standard_enable_retry = standard_enable_retry + 1
+                      print(
+                          f"Retry {standard_enable_retry} due to InvalidInputException "
+                          + f"while enabling standard: {error.response['Error']['Code']} - {error.response['Error']['Message']}"
+                      )
+                      sleep(standard_enable_retry_sleep)
+              return False
+          def all_standards_ready(securityhub_client) -> bool:
+              for i in range(10):
+                  standards_subscriptions = get_enabled_standards(securityhub_client)
+                  if all_standards_in_status(standards_subscriptions, "READY", securityhub_client):
+                      return True
+                  print(f"Waiting 20 seconds before checking if standards are in READY status. {i} of 10")
+                  sleep(20)
+              return False
+          def process_standard(securityhub_client, standards_to_enable: dict, standard_definition: dict, standard_short_name: str) -> bool:
+              if all_standards_ready(securityhub_client):
+                  try:
+                      if standards_to_enable[standard_short_name]:
+                          if not standard_definition["enabled"]:
+                              response = securityhub_client.batch_enable_standards(
+                                  StandardsSubscriptionRequests=[{"StandardsArn": standard_definition["standard_arn"]}]
+                              )
+                              api_call_details = {"API_Call": "securityhub:BatchEnableStandards", "API_Response": response}
+                              print(api_call_details)
+                              print(f"Enabled {standard_definition['name']}")
+                          else:
+                              print(f"{standard_definition['name']} is already enabled")
+                      else:
+                          if standard_definition["enabled"]:
+                              print(f"Disabling {standard_definition['name']} in Account")
+                              response = securityhub_client.batch_disable_standards(StandardsSubscriptionArns=[standard_definition["subscription_arn"]])
+                              api_call_details = {"API_Call": "securityhub:BatchDisableStandards", "API_Response": response}
+                              print(api_call_details)
+                              print(f"Disabled {standard_definition['name']} in Account")
+                          else:
+                              print(f"{standard_definition['name']} is already disabled")
+                  except securityhub_client.exceptions.InvalidInputException:
+                      print("InvalidInputException while enabling or disabling standard")
+              return True
+
+  DelegateAdminAccountLambda:
+    DependsOn: EnableServiceAccessLambda
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-securityhub-admin-delegation"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import requests
+          import boto3
+          SECURITY_HUB_THROTTLE_PERIOD = 0.2
+          MAX_RETRY_ATTEMPTS = 5
+          DELAY_SECONDS = 3
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_organization_admin_account')
+                  try:
+                      admin_account_id = kwargs['AdminAccountId']
+                      if not is_admin_account_enabled(client, admin_account_id):
+                          for _ in range(10):
+                              try:
+                                  method(**kwargs)
+                                  print(f"Delegated admin '{admin_account_id}' enabled")
+                                  break
+                              except client.exceptions.ResourceConflictException:
+                                  print("Delegated admin already enabled")
+                              except client.exceptions.ClientError as error:
+                                  if error.response["Error"]["Code"] != "InvalidInputException":
+                                      raise
+                                  print(f"Waiting 10 seconds before retrying the enable organization delegated admin '{admin_account_id}' enabled")
+                                  sleep(10)
+                      else:
+                          print("Delegated admin already enabled")
+                  except client.exceptions.ConflictException:
+                      print("Delegated admin already enabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_organization_admin_account')
+                  for admin_account in get_admin_accounts(client):
+                      try:
+                          response = method(AdminAccountId=admin_account)
+                          api_call_details = {"API_Call": "securityhub:DisableOrganizationAdminAccount", "API_Response": response}
+                          print(api_call_details)
+                          print(f"Admin Account {admin_account} Disabled")
+                      except client.exceptions.InvalidInputException:
+                          if 'Admin account is either already disabled or is in progress of being disabled' in str(error):
+                              print(f"{str(error)}")
+                          else:
+                              status = 'FAILED'
+                              reason = str(e)
+                              data = {}
+                      except client.exceptions.ResourceNotFoundException:
+                          print(f"Account {kwargs['delegatedAdminAccountId']} not registered as delegated admin")
+                      except Exception as e:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                  if not deregister_org_delegated_admin():
+                      print("Could not deregister delegated admins from organizations")
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_admin_accounts(securityhub_client) -> list:
+              admin_accounts = []
+              paginator = securityhub_client.get_paginator("list_organization_admin_accounts")
+              for page in paginator.paginate():
+                  for admin_account in page["AdminAccounts"]:
+                      if admin_account["Status"] == "ENABLED":
+                          admin_accounts.append(admin_account["AccountId"])
+                  sleep(SECURITY_HUB_THROTTLE_PERIOD)
+              return admin_accounts
+          def is_admin_account_enabled(securityhub_client, admin_account_id: str) -> bool:
+              paginator = securityhub_client.get_paginator("list_organization_admin_accounts")
+              for page in paginator.paginate():
+                  for admin_account in page["AdminAccounts"]:
+                      if admin_account["AccountId"] == admin_account_id and admin_account["Status"] == "ENABLED":
+                          return True
+                  sleep(SECURITY_HUB_THROTTLE_PERIOD)
+              return False
+          def get_org_delegated_admins(org_client, service_principal) -> list:
+              admin_accounts = []
+              next_token = ''
+              base_kwargs = { 'ServicePrincipal': service_principal }
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken':  next_token})
+                  response = org_client.list_delegated_administrators(**kwargs)
+                  for admin in response['DelegatedAdministrators']:
+                      admin_accounts.append(admin['Id'])
+                  next_token = response['NextToken'] if 'NextToken' in response else None
+              return admin_accounts
+          def deregister_org_delegated_admin() -> bool:
+              retry_attempts = 0
+              delay = DELAY_SECONDS
+              service_principal = "securityhub.amazonaws.com"
+              organizations = boto3.client("organizations")
+              while retry_attempts < MAX_RETRY_ATTEMPTS:
+                  try:
+                      delegated_administrators = get_org_delegated_admins(organizations, service_principal)
+                      for admin in delegated_administrators:
+                          organizations.deregister_delegated_administrator(AccountId=admin,ServicePrincipal=service_principal)
+                      return True
+                  except organizations.exceptions.ClientError as error:
+                      if retry_attempts < MAX_RETRY_ATTEMPTS:
+                          retry_attempts += 1
+                          print(f"{str(error)}. Retrying in {delay} seconds...")
+                          sleep(delay)
+                          delay *= 2
+                          continue
+                      print(f"[ERROR] {str(error)}")
+                      return False
+              return False
+
+  EnableServiceAccess:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: organizations
+      ServiceToken: !GetAtt EnableServiceAccessLambda.Arn
+      KwArgs:
+        ServicePrincipal: "securityhub.amazonaws.com"
+
+  EnableManagementSecurityHub:
+    DependsOn: EnableServiceAccess
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt EnableManagementSecurityHubLambda.Arn
+      KwArgs:
+        SecurityBestPracticesVersion: !Ref SecurityBestPracticesStandardVersion
+        CISVersion: !Ref CISStandardVersion
+        PCIVersion: !Ref PCIStandardVersion
+        NISTVersion: !Ref NISTStandardVersion
+        StandardsToEnable:
+          sbp: !Ref EnableSecurityBestPracticesStandard
+          cis: !Ref EnableCISStandard
+          pci: !Ref EnablePCIStandard
+          nist: !Ref EnableNISTStandard
+
+  DelegateAdminAccount:
+    DependsOn: EnableManagementSecurityHub
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt DelegateAdminAccountLambda.Arn
+      KwArgs:
+        AdminAccountId: !Ref SecurityHubAdminAccountId
+
+Outputs:
+  AdminAccountId:
+    Description: ID of SecurityHub Admin Account
+    Value: !Ref SecurityHubAdminAccountId

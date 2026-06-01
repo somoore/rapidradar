@@ -1,0 +1,921 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Enables Inspector2 for all accounts and regions in Organization
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - InspectorAdminAccountId
+          - DeploymentTargets
+          - ExcludeAccounts
+          - ManagementAccountId
+          - AutomationAccountId
+      - Label:
+          default: Inspector Configuration
+        Parameters:
+          - ScanComponents
+          - PushEcrRescanDuration
+          - PullEcrRescanDuration
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      InspectorAdminAccountId:
+        default: ID of AWS Account delegated as admin for Inspector2
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you're getting this solution deployed to
+      ExcludeAccounts:
+        default: Accounts you want to exclude from the deployment
+      ManagementAccountId:
+        default: Management Account ID
+      AutomationAccountId:
+        default: Automation Account ID
+      ScanComponents:
+        default: Comma separated list of scan components (EC2, ECR, LAMBDA, LAMBDA_CODE)
+      PushEcrRescanDuration:
+        default: ECR Rescan Duration configured for image push date
+      PullEcrRescanDuration:
+        default: ECR Rescan Duration configured for image pull date
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  InspectorAdminAccountId:
+    Type: String
+    Description: Account ID
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List
+  ManagementAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  ScanComponents:
+    Type: List<String>
+    AllowedValues: [EC2, ECR, LAMBDA, LAMBDA_CODE]
+    Description: Scan Components for Inspector
+  PushEcrRescanDuration:
+    Type: String
+    AllowedValues: [LIFETIME, DAYS_30, DAYS_180, DAYS_14, DAYS_60, DAYS_90]
+    Description: ECR Rescan Duration
+  PullEcrRescanDuration:
+    Type: String
+    AllowedValues: [DAYS_14, DAYS_30, DAYS_60, DAYS_90, DAYS_180]
+    Description: ECR Rescan Duration
+
+Conditions:
+  InspectorAdminAccountIdEmpty: !Equals
+  - !Ref InspectorAdminAccountId
+  - ""
+  InspectorAdminAccountIdNotEmpty: !Not [ !Condition InspectorAdminAccountIdEmpty ]
+
+Resources:
+  InspectorEnablerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: "*"
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:ListAccounts"
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:DeregisterDelegatedAdministrator"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            - iam:DeleteServiceLinkedRole
+            Resource: '*'
+      - PolicyName: Inspector2ReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: Inspector2Access
+            Effect: Allow
+            Action:
+              - inspector2:UpdateOrganizationConfiguration
+              - inspector2:Disable
+              - inspector2:DescribeOrganizationConfiguration
+              - inspector2:GetMember
+              - inspector2:DisassociateMember
+              - inspector2:BatchGetAccountStatus
+              - inspector2:AssociateMember
+              - inspector2:Enable
+              - inspector2:UpdateConfiguration
+            Resource: '*'
+
+  EnableInspector2Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-enable-inspector2"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt InspectorEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          from os import getenv
+          import time
+          import requests
+          import boto3
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          ENABLE_RETRY_ATTEMPTS = 10
+          ENABLE_RETRY_SLEEP_INTERVAL = 10
+          ALL_INSPECTOR_SCAN_COMPONENTS = ["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"]
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  try:
+                      kwargs['accountIds'] = [ACCOUNT_ID]
+                      print("Enabling Inspector2...")
+                      if not is_lambda_code_scanning_supported():
+                          if 'LAMBDA_CODE' in kwargs['resourceTypes']:
+                              kwargs['resourceTypes'].remove('LAMBDA_CODE')
+                      for attempt_iteration in range(1, ENABLE_RETRY_ATTEMPTS):
+                          if get_inspector_status(client, ACCOUNT_ID, kwargs['resourceTypes']) != "enabled":
+                              print(f"Attempt {attempt_iteration} - enabling inspector in the ({ACCOUNT_ID}) account...")
+                              try:
+                                  enable_inspector_response = method(**kwargs)
+                                  api_call_details = {"API_Call": "inspector:Enable", "API_Response": enable_inspector_response}
+                                  print(api_call_details)
+                              except client.exceptions.ConflictException:
+                                  print(f"inspector already enabled in {ACCOUNT_ID}")
+                          else:
+                              print(f"Inspector is enabled in the {ACCOUNT_ID} account")
+                              break
+                          time.sleep(ENABLE_RETRY_SLEEP_INTERVAL)
+                      time.sleep(30)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  try:
+                      if get_inspector_status(client, ACCOUNT_ID, kwargs['resourceTypes']) != "disabled":
+                          print(ACCOUNT_ID + ", MEMBER")
+                          if not is_lambda_code_scanning_supported():
+                              if 'LAMBDA_CODE' in ALL_INSPECTOR_SCAN_COMPONENTS:
+                                  ALL_INSPECTOR_SCAN_COMPONENTS.remove('LAMBDA_CODE')
+                          disable_inspector2_response = disable_inspector2(client, ACCOUNT_ID, ALL_INSPECTOR_SCAN_COMPONENTS)
+                          print(disable_inspector2_response)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_lambda_code_scanning_supported() -> bool:
+              supported_regions = [ "us-east-1", "us-west-2", "us-east-2", "ap-southeast-2", "ap-northeast-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-north-1", "ap-southeast-1" ]
+              if CURRENT_REGION in supported_regions:
+                  return True
+              return False
+          def get_inspector_status(inspector2_client, account_id: str, scan_components: list) -> str:
+              print(f"get_inspector_status: scan_components - ({scan_components})")
+              print(f"Checking inspector service status for {account_id} account...")
+              enabled_components = 0
+              inspector_status_response = inspector2_client.batch_get_account_status(accountIds=[account_id])
+              api_call_details = {"API_Call": "inspector:BatchGetAccountStatus", "API_Response": inspector_status_response}
+              print(api_call_details)
+              for status in inspector_status_response["accounts"]:
+                  if status["state"]["status"] == "ENABLED":
+                      print(f"Status: {status['state']['status']}")
+                      for scan_component in scan_components:
+                          print(f"{scan_component} status: {status['resourceState'][snake_to_camel(scan_component)]['status']}")  # type: ignore
+                          if status["resourceState"][snake_to_camel(scan_component)]["status"] != "ENABLED":  # type: ignore
+                              print(f"{scan_component} scan component is disabled...")
+                          else:
+                              print(f"{scan_component} scan component is enabled...")
+                              enabled_components = enabled_components + 1
+                  else:
+                      inspector_status = "disabled"
+                      return inspector_status
+              if 0 < enabled_components < len(scan_components):
+                  inspector_status = "partial"
+              elif enabled_components == len(scan_components):
+                  inspector_status = "enabled"
+              else:
+                  inspector_status = "disabled"
+              return inspector_status
+          def disable_inspector2(inspector2_client, account_id: str, scan_components: list):
+              print(f"disable_inspector2: scan_components - ({scan_components})")
+              disable_inspector_response = inspector2_client.disable(
+                  accountIds=[
+                      account_id,
+                  ],
+                  resourceTypes=scan_components,
+              )
+              return disable_inspector_response
+          def snake_to_camel(snake_str: str) -> str:
+              camel_str = snake_str.title().replace("_", "")
+              return camel_str[0].lower() + camel_str[1:]
+
+  UpdateConfigurationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-inspector2-update-configuration"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 900
+      Role: !GetAtt InspectorEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:BOTO3_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          IS_STANDALONE_ACCOUNT: !If [ InspectorAdminAccountIdEmpty, "true", "false" ]
+          CURRENT_REGION: !Ref AWS::Region
+          PUSH_ECR_RESCAN_DURATION: !Ref PushEcrRescanDuration
+          PULL_ECR_RESCAN_DURATION: !Ref PullEcrRescanDuration
+      Code:
+        ZipFile: |
+          import json
+          import time
+          from os import getenv
+          import requests
+          import boto3
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          PUSH_ECR_RESCAN_DURATION = getenv('PUSH_ECR_RESCAN_DURATION')
+          PULL_ECR_RESCAN_DURATION = getenv('PULL_ECR_RESCAN_DURATION')
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              if event_type in ['Create', 'Update']:
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  try:
+                      if is_lambda_code_scanning_supported():
+                          if 'LAMBDA_CODE' in kwargs['resourceTypes']:
+                              kwargs['resourceTypes'].remove('LAMBDA_CODE')
+                      enabled_component_count: int = 0
+                      scan_component_dict = {
+                          'ec2': True if 'EC2' in kwargs['resourceTypes'] else False,
+                          'ecr': True if 'ECR' in kwargs['resourceTypes'] else False,
+                          'lambda': True if 'LAMBDA' in kwargs['resourceTypes'] else False
+                      }
+                      if is_lambda_code_scanning_supported():
+                          scan_component_dict['lambdaCode'] = True if 'LAMBDA_CODE' in kwargs['resourceTypes'] else False
+                      for scan_component in scan_component_dict:
+                          if scan_component_dict[scan_component] is True:  # type: ignore
+                              enabled_component_count = enabled_component_count + 1
+                      if not IS_STANDALONE_ACCOUNT:
+                          if check_inspector_org_auto_enabled(client) != enabled_component_count:
+                              print("configuring auto-enable inspector via update_organization_configuration")
+                              client.update_organization_configuration(
+                                  autoEnable=scan_component_dict
+                              )
+                              print("inspector organization auto-enable configuration updated")
+                          else:
+                              print("inspector organization already auto-enabled properly")
+                      time.sleep(10)
+                      if 'ECR' in kwargs['resourceTypes']:
+                          client.update_configuration(
+                              ecrConfiguration={
+                                  'pullDateRescanDuration': PULL_ECR_RESCAN_DURATION,
+                                  'rescanDuration': PUSH_ECR_RESCAN_DURATION
+                              }
+                          )
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  try:
+                      if not IS_STANDALONE_ACCOUNT:
+                          if check_inspector_org_auto_enabled(client) > 0:
+                              print(f"disabling inspector scanning auto-enable...")
+                              scan_component_dict = {
+                                  "ec2": False,
+                                  "ecr": False,
+                                  "lambda": False
+                              }
+                              if is_lambda_code_scanning_supported():
+                                  scan_component_dict['lambdaCode'] = False
+                              update_organization_configuration_response = client.update_organization_configuration(
+                                  autoEnable=scan_component_dict
+                              )
+                              api_call_details = {"API_Call": "inspector:UpdateOrganizationConfiguration", "API_Response": update_organization_configuration_response}
+                              print(api_call_details)
+                              print(f"inspector organization configuration updated (disabled scanning)")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_lambda_code_scanning_supported() -> bool:
+              supported_regions = [ "us-east-1", "us-west-2", "us-east-2", "ap-southeast-2", "ap-northeast-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-north-1", "ap-southeast-1" ]
+              if CURRENT_REGION in supported_regions:
+                  return True
+              return False
+          def check_inspector_org_auto_enabled(inspector2_delegated_admin_client) -> int:
+              org_config_ec2_auto_enabled = 0
+              org_config_ecr_auto_enabled = 0
+              org_config_lambda_auto_enabled = 0
+              org_config_lambda_code_auto_enabled = 0
+              try:
+                  describe_org_conf_response = (
+                      inspector2_delegated_admin_client.describe_organization_configuration()
+                  )
+                  if "ec2" in describe_org_conf_response["autoEnable"] and describe_org_conf_response["autoEnable"]["ec2"] is True:
+                      org_config_ec2_auto_enabled = 1
+                      print("Organization inspector scanning for ec2 is already configured to be auto-enabled")
+                  if "ecr" in describe_org_conf_response["autoEnable"] and describe_org_conf_response["autoEnable"]["ecr"] is True:
+                      org_config_ecr_auto_enabled = 1
+                      print("Organization inspector scanning for ecr is already configured to be auto-enabled")
+                  if "lambda" in describe_org_conf_response["autoEnable"] and describe_org_conf_response["autoEnable"]["lambda"] is True:
+                      org_config_lambda_auto_enabled = 1
+                      print("Organization inspector scanning for lambda is already configured to be auto-enabled")
+                  if "lambdaCode" in describe_org_conf_response["autoEnable"] and describe_org_conf_response["autoEnable"]["lambdaCode"] is True:
+                      org_config_lambda_code_auto_enabled = 1
+                      print("Organization inspector scanning for lambda code is already configured to be auto-enabled")
+              except inspector2_delegated_admin_client.exceptions.AccessDeniedException as error:
+                  if 'Invoking account does not have access' in str(error):
+                      print("this account has already been disabled for inspector2 or does not have access to get member accounts")
+                  else:
+                      raise error
+              return org_config_ec2_auto_enabled + org_config_ecr_auto_enabled + org_config_lambda_auto_enabled + org_config_lambda_code_auto_enabled
+
+  AssociateMembersLambda:
+    Condition: InspectorAdminAccountIdNotEmpty
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-inspector2-associate-members"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 900
+      Role: !GetAtt InspectorEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:BOTO3_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+          EXCLUDE_ACCOUNTS: !Ref ExcludeAccounts
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          IS_STANDALONE_ACCOUNT: !If [ InspectorAdminAccountIdEmpty, "true", "false" ]
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          from os import getenv
+          import requests
+          import boto3
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          EXCLUDE_ACCOUNTS = str(getenv('EXCLUDE_ACCOUNTS'))
+          EXCLUDE_ACCOUNTS = EXCLUDE_ACCOUNTS.replace(' ','').split(',') if EXCLUDE_ACCOUNTS else []
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          ORG_THROTTLE_PERIOD = 0.2
+          ENABLE_RETRY_ATTEMPTS = 10
+          ENABLE_RETRY_SLEEP_INTERVAL = 10
+          ALL_INSPECTOR_SCAN_COMPONENTS = ["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"]
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = value
+              if event_type in ['Create', 'Update']:
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  try:
+                      if not is_lambda_code_scanning_supported():
+                          if 'LAMBDA_CODE' in kwargs['resourceTypes']:
+                              kwargs['resourceTypes'].remove('LAMBDA_CODE')
+                      for account in accounts:
+                          if account not in [ACCOUNT_ID]:
+                              if lookup_associated_accounts(client, account) is True:
+                                  print(f"Account ({account}) is a member")
+                              else:
+                                  print(f"Account ({account}) is NOT a member yet")
+                                  print(associate_account(client, account))
+                              print(f"enabling inspector in the member account ({account})...")
+                              enable_inspector2(client, account, kwargs['resourceTypes'])
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  try:
+                      for account in accounts:
+                          if account not in [ACCOUNT_ID] and lookup_associated_accounts(client, account) is True:
+                              print(account + ", MEMBER")
+                              if not is_lambda_code_scanning_supported():
+                                  if 'LAMBDA_CODE' in ALL_INSPECTOR_SCAN_COMPONENTS:
+                                      ALL_INSPECTOR_SCAN_COMPONENTS.remove('LAMBDA_CODE')
+                              disable_inspector2_response = disable_inspector2(client, account, ALL_INSPECTOR_SCAN_COMPONENTS)
+                              print(disable_inspector2_response)
+                              disassociate_member_return = disassociate_member(client, account)
+                              print(disassociate_member_return)
+                  except client.exceptions.AccessDeniedException as error:
+                      if 'Invoking account does not have access' in str(error):
+                          print("this account has already been disabled for inspector2 or does not have access to get member accounts")
+                      else:
+                          status = 'FAILED'
+                          reason = str(error)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def __assume_role():
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=SSO_CROSS_ACCOUNT_ROLE_ARN, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts and child['Id'] not in EXCLUDE_ACCOUNTS:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_active_organization_accounts(org_client, deployment_targets: list, exclude_account: list = None) -> list:
+              active_accounts = []
+              active_accounts_details = []
+              describe_method=getattr(org_client, 'describe_account')
+              try:
+                  if not IS_STANDALONE_ACCOUNT and exclude_account is not None:
+                      for target in deployment_targets:
+                          active_accounts.extend(get_children(org_client, 'ACCOUNT', target, exclude_account))
+                          active_accounts.extend(get_children(org_client, 'ORGANIZATIONAL_UNIT', target, exclude_account))
+                  else:
+                      active_accounts.append(ACCOUNT_ID)
+                  for account in active_accounts:
+                      response = describe_method(AccountId=account)
+                      if 'Account' in response:
+                          if response["Account"]["Status"] == "ACTIVE":
+                              active_accounts_details.append(response["Account"]["Id"])
+                      sleep(ORG_THROTTLE_PERIOD)
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts_details
+          def is_lambda_code_scanning_supported() -> bool:
+              supported_regions = [ "us-east-1", "us-west-2", "us-east-2", "ap-southeast-2", "ap-northeast-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-north-1", "ap-southeast-1" ]
+              if CURRENT_REGION in supported_regions:
+                  return True
+              return False
+          def associate_account(inspector2_client, account_id: str):
+              associate_response = inspector2_client.associate_member(accountId=account_id)
+              return associate_response
+          def lookup_associated_accounts(inspector2_client, account_id: str) -> bool:
+              try:
+                  response = inspector2_client.get_member(accountId=account_id)
+              except inspector2_client.exceptions.ResourceNotFoundException:
+                  return False
+              except Exception as e:
+                  print(f"[ERROR] Failed to get inspector members. {e}")
+                  raise
+              if response["member"]["accountId"] == account_id:
+                  print(f"{account_id} relationship status: {response['member']['relationshipStatus']}")
+                  if response["member"]["relationshipStatus"] != "ENABLED":
+                      associate_account(inspector2_client, account_id)
+                  return True
+              return False
+          def enable_inspector2(inspector2_client, account_id: str, scan_components: list) -> None:
+              print(f"enable_inspector2: scan_components - ({scan_components})")
+              for attempt_iteration in range(1, ENABLE_RETRY_ATTEMPTS):
+                  if get_inspector_status(inspector2_client, account_id, scan_components) != "enabled":
+                      print(f"Attempt {attempt_iteration} - enabling inspector in the ({account_id}) account...")
+                      try:
+                          enable_inspector_response = inspector2_client.enable(
+                              accountIds=[
+                                  account_id,
+                              ],
+                              resourceTypes=scan_components,
+                          )
+                          api_call_details = {"API_Call": "inspector:Enable", "API_Response": enable_inspector_response}
+                          print(api_call_details)
+                      except inspector2_client.exceptions.ConflictException:
+                          print(f"inspector already enabled in {account_id}")
+                  else:
+                      print(f"Inspector is enabled in the {account_id} account")
+                      break
+                  sleep(ENABLE_RETRY_SLEEP_INTERVAL)
+          def disable_inspector2(inspector2_client, account_id: str, scan_components: list):
+              print(f"disable_inspector2: scan_components - ({scan_components})")
+              disable_inspector_response = inspector2_client.disable(
+                  accountIds=[
+                      account_id,
+                  ],
+                  resourceTypes=scan_components,
+              )
+              return disable_inspector_response
+          def disassociate_member(inspector2_delegated_admin_client, account_id: str):
+              associate_response = inspector2_delegated_admin_client.disassociate_member(accountId=account_id)
+              return associate_response
+          def get_inspector_status(inspector2_client, account_id: str, scan_components: list) -> str:
+              print(f"get_inspector_status: scan_components - ({scan_components})")
+              print(f"Checking inspector service status for {account_id} account...")
+              enabled_components = 0
+              inspector_status_response = inspector2_client.batch_get_account_status(accountIds=[account_id])
+              api_call_details = {"API_Call": "inspector:BatchGetAccountStatus", "API_Response": inspector_status_response}
+              print(api_call_details)
+              for status in inspector_status_response["accounts"]:
+                  if status["state"]["status"] == "ENABLED":
+                      print(f"Status: {status['state']['status']}")
+                      for scan_component in scan_components:
+                          print(f"{scan_component} status: {status['resourceState'][snake_to_camel(scan_component)]['status']}")
+                          if status["resourceState"][snake_to_camel(scan_component)]["status"] != "ENABLED":
+                              print(f"{scan_component} scan component is disabled...")
+                          else:
+                              print(f"{scan_component} scan component is enabled...")
+                              enabled_components = enabled_components + 1
+                  else:
+                      inspector_status = "disabled"
+                      return inspector_status
+              if 0 < enabled_components < len(scan_components):
+                  inspector_status = "partial"
+              elif enabled_components == len(scan_components):
+                  inspector_status = "enabled"
+              else:
+                  inspector_status = "disabled"
+              return inspector_status
+          def snake_to_camel(snake_str: str) -> str:
+              camel_str = snake_str.title().replace("_", "")
+              return camel_str[0].lower() + camel_str[1:]
+
+  ScanComponentsUpdateCheckerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-inspector2-scan-components-update-checker"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 900
+      Role: !GetAtt InspectorEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:BOTO3_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ACCOUNT_ID: !Ref AWS::AccountId
+          EXCLUDE_ACCOUNTS: !Ref ExcludeAccounts
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          IS_STANDALONE_ACCOUNT: !If [ InspectorAdminAccountIdEmpty, "true", "false" ]
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          from os import getenv
+          import requests
+          import boto3
+          ORG_THROTTLE_PERIOD = 0.2
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          EXCLUDE_ACCOUNTS = getenv('EXCLUDE_ACCOUNTS').replace(' ','').split(',')
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              if event_type in ['Create', 'Update']:
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  try:
+                      old_kwargs = {}
+                      if 'OldResourceProperties' in event and 'KwArgs' in event['OldResourceProperties']:
+                          old_props = event['OldResourceProperties']
+                          for key, value in old_props['KwArgs'].items():
+                              old_kwargs[key] = value
+                      disabled_components = []
+                      if 'resourceTypes' in old_kwargs:
+                          for old_comp in old_kwargs['resourceTypes']:
+                              if old_comp not in kwargs['resourceTypes']:
+                                  disabled_components.append(old_comp)
+                      print(f"Disabled Components: {disabled_components}")
+                      for account in accounts:
+                          if account not in [ACCOUNT_ID] or IS_STANDALONE_ACCOUNT:
+                              print(f"Checking inspector service status for {account} account...")
+                              disablement: bool = False
+                              inspector_status_response = client.batch_get_account_status(accountIds=[account])
+                              api_call_details = {"API_Call": "inspector:BatchGetAccountStatus", "API_Response": inspector_status_response}
+                              print(api_call_details)
+                              for status in inspector_status_response["accounts"]:
+                                  if status["state"]["status"] == "ENABLED":
+                                      print(f"Status: {status['state']['status']}")
+                                      for scan_component in disabled_components:
+                                          print(f"{scan_component} status: {status['resourceState'][snake_to_camel(scan_component)]['status']}")
+                                          if status["resourceState"][snake_to_camel(scan_component)]["status"] != "ENABLED":
+                                              print(f"{scan_component} scan component is disabled...")
+                                          else:
+                                              print(f"{scan_component} scan component is enabled (disablement required)...")
+                                              disablement = True
+                              if disablement is True:
+                                  print("Disabling some scan components...")
+                                  disable_inspector2(
+                                      client, account, disabled_components
+                                  )
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def __assume_role():
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=SSO_CROSS_ACCOUNT_ROLE_ARN, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts and child['Id'] not in EXCLUDE_ACCOUNTS:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_active_organization_accounts(org_client, deployment_targets: list, exclude_account: list = None) -> list:
+              active_accounts = []
+              active_accounts_details = []
+              describe_method=getattr(org_client, 'describe_account')
+              try:
+                  if not IS_STANDALONE_ACCOUNT and exclude_account is not None:
+                      for target in deployment_targets:
+                          active_accounts.extend(get_children(org_client, 'ACCOUNT', target, exclude_account))
+                          active_accounts.extend(get_children(org_client, 'ORGANIZATIONAL_UNIT', target, exclude_account))
+                  else:
+                      active_accounts.append(ACCOUNT_ID)
+                  for account in active_accounts:
+                      response = describe_method(AccountId=account)
+                      if 'Account' in response:
+                          if response["Account"]["Status"] == "ACTIVE":
+                              active_accounts_details.append(response["Account"]["Id"])
+                      sleep(ORG_THROTTLE_PERIOD)
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts_details
+          def disable_inspector2(inspector2_client, account_id: str, scan_components: list):
+              print(f"disable_inspector2: scan_components - ({scan_components})")
+              disable_inspector_response = inspector2_client.disable(
+                  accountIds=[
+                      account_id,
+                  ],
+                  resourceTypes=scan_components,
+              )
+              return disable_inspector_response
+          def snake_to_camel(snake_str: str) -> str:
+              camel_str = snake_str.title().replace("_", "")
+              return camel_str[0].lower() + camel_str[1:]
+
+  EnableInspector2:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt EnableInspector2Lambda.Arn
+      KwArgs:
+        resourceTypes: !Ref ScanComponents
+
+  UpdateConfiguration:
+    DependsOn: EnableInspector2
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt UpdateConfigurationLambda.Arn
+      KwArgs:
+        resourceTypes: !Ref ScanComponents
+
+  AssociateMembers:
+    Condition: InspectorAdminAccountIdNotEmpty
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt AssociateMembersLambda.Arn
+      KwArgs:
+        DeploymentTargets: !Ref DeploymentTargets
+        ExcludeAccount: !If [InspectorAdminAccountIdEmpty, !Ref AWS::NoValue, !Ref AWS::AccountId]
+        resourceTypes: !Ref ScanComponents
+
+  ScanComponentsUpdateChecker:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt ScanComponentsUpdateCheckerLambda.Arn
+      KwArgs:
+        DeploymentTargets: !Ref DeploymentTargets
+        ExcludeAccount: !If [InspectorAdminAccountIdEmpty, !Ref AWS::NoValue, !Ref AWS::AccountId]
+        resourceTypes: !Ref ScanComponents

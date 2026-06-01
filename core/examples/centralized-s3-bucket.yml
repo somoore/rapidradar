@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates centralized S3 Bucket
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - OrganizationId
+          - S3BucketPrefix
+          - KmsKeyAlias
+    ParameterLabels:
+      OrganizationId:
+        default: Organization ID
+      S3BucketPrefix:
+        default: Prefix for S3 Bucket Name
+      KmsKeyAlias:
+        default: Alias Name for new KMS Key for S3 Bucket
+
+Parameters:
+  OrganizationId:
+    Type: String
+    Description: Organization ID
+  S3BucketPrefix:
+    Type: String
+    Description: Prefix for name of S3 Bucket (will be suffixed with Account ID)
+  KmsKeyAlias:
+    Type: String
+    Description: Alias Name for new KMS Key for S3 Bucket (should not include the 'alias/' prefix)
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${S3BucketPrefix}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${S3KmsKeyAlias}"
+              SSEAlgorithm: aws:kms
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  S3KmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Id: DefaultKmsPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              Service:
+              - "s3.amazonaws.com"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+          - Sid: Allow cross-account use of the key
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId
+
+  S3KmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${KmsKeyAlias}"
+      TargetKeyId: !GetAtt S3KmsKey.Arn
+
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+            - "s3:GetObject"
+            Resource:
+              - !Sub "${S3Bucket.Arn}/*"
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId
+
+Outputs:
+  S3BucketName:
+    Description: Name of S3 Bucket
+    Value: !Ref S3Bucket
+  S3BucketARN:
+    Description: ARN of S3 Bucket
+    Value: !GetAtt S3Bucket.Arn
+  S3KmsKeyARN:
+    Description: ARN of KMS Key used for S3 Bucket encryption at REST
+    Value: !GetAtt S3KmsKey.Arn

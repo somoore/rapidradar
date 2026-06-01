@@ -1,0 +1,11 @@
+AllTrafficSGRulesRemediation: false
+RemoteAccessPortsSGRulesRemediation: false
+TrafficPortsSGRulesRemediation: false
+LaunchWizardSGRemediation: false
+S3AccountPublicBlockRemediation: false
+EBSPublicSnapshotsRemediation: false
+PublicAMIsRemediation: false
+PublicRDSSnapshotsRemediation: false
+AttachedOverPermissiveRolesRemediation: false
+UnusedSecretAccessKeypairRemediation: true
+DeactivateUnusedSecretAccessKeypairInDays: 10

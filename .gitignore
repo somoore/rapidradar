@@ -1,0 +1,91 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.tmp
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+env.sh
+*.local
+*.local.*
+*.local.yml
+*.local.yaml
+local*.yml
+local*.yaml
+secrets*.yml
+secrets*.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+pip-wheel-metadata/
+
+# Go
+bin/
+rrcore
+*.test
+*.out
+coverage.out
+vendor/
+
+# Logs and temporary files
+*.log
+*.pid
+*.seed
+*.tar.gz
+*.zip
+
+# RapidRadar packaging output
+core/cf/.cloudformation/
+core/cf/packaged-template.yml
+core/rrcore

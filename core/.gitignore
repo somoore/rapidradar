@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.vscode/
+.idea/
+.venv/
+venv/
+env.sh
+test_code.py
+rrcore
+*.test
+*.out
+coverage.out

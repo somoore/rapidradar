@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates Network resources needed to either generate Resources Reports for Disabled/Deleted SSO Users
+  or run Slack in socket mode
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "172.30.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PublicSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      CidrBlock: "172.30.1.0/25"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-public-subnet-01"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PublicSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      CidrBlock: "172.30.1.128/25"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-public-subnet-02"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PrivateSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      CidrBlock: "172.30.2.0/24"
+      MapPublicIpOnLaunch: False
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-private-subnet-01"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PrivateSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      CidrBlock: "172.30.3.0/24"
+      MapPublicIpOnLaunch: False
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-private-subnet-02"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-igw"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  NatPublicIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPC
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatPublicIP.AllocationId
+      SubnetId: !Ref PublicSubnet01
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-natgw"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-public-rtb"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet01
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet02
+      RouteTableId: !Ref PublicRouteTable
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-private-rtb"
+        - Key: DeployMethod
+          Value: cloudformation
+        - Key: DeployedBy
+          Value: !Ref ProjectName
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  PrivateSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet01
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet02
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  VpcId:
+    Description: ID of VPC
+    Value: !Ref VPC
+  PrivateSubnets:
+    Description: IDs of Private Subnets
+    Value:
+      Fn::Join:
+        - ","
+        - - !Ref PrivateSubnet01
+          - !Ref PrivateSubnet02
+  PublicSubnets:
+    Description: IDs of Public Subnets
+    Value:
+      Fn::Join:
+        - ","
+        - - !Ref PublicSubnet01
+          - !Ref PublicSubnet02

@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates IAM Managed Policy to allow Read Access to S3 Bucket
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - PolicyName
+          - S3BucketName
+          - S3KmsKeyARN
+    ParameterLabels:
+      PolicyName:
+        default: Policy Name
+      S3BucketName:
+        default: S3 Bucket Name
+      S3KmsKeyARN:
+        default: S3 KMS Key ARN
+
+Parameters:
+  PolicyName:
+    Type: String
+    Description: Name of the IAM Managed Policy
+  S3BucketName:
+    Type: String
+    Description: Name of S3 Bucket to allow read access for
+  S3KmsKeyARN:
+    Type: String
+    Description: ARN of KMS Key used for S3 Bucket encryption at REST
+
+Resources:
+  S3BucketReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref PolicyName
+      Description: Policy for allowing read access to an S3 Bucket
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Sid: S3GetAccess
+          Effect: Allow
+          Action: s3:GetObject
+          Resource: !Sub "arn:aws:s3:::${S3BucketName}/*"
+        - Sid: KMSAccess
+          Effect: Allow
+          Action:
+          - kms:Decrypt
+          - kms:GenerateDataKey*
+          Resource: !Ref S3KmsKeyARN

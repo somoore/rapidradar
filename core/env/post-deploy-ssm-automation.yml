@@ -1,0 +1,106 @@
+AddSupportforPostDeploySSMAutomation: true
+
+AutoAttachIAMRoleEC2: true
+ExistingEC2SSMIAMRoleName: ""
+AutoAttachMissingPolicies: true
+NamesOfAdditionalPoliciesToAutoAttach: ""
+AutoCreateVPCEndpoints: true
+VPCEndpointsList: ""
+
+CreateNewManagedPolicy: false
+ManagedPolicyName: "" # will also be auto-attached to EC2 Roles if AutoAttachMissingPolicies is true
+ManagedPolicyDocumentJson: ''
+
+EnableEC2InstanceConfigurator: true
+TrackSSMDocumentAssociationFailures: true
+CreatePagerDutyIncidentsForSSMFailures: true
+EnableHourlySSMFailureReminders: true
+SSMDocumentContentJson: '{
+  "schemaVersion": "2.2",
+  "description": "State Document",
+  "mainSteps": [
+    {
+      "action": "aws:downloadContent",
+      "name": "downloadPowershellScript",
+      "timeoutSeconds": 3600,
+      "maxAttempts": 5,
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Windows"
+        ]
+      },
+      "inputs": {
+        "sourceType": "S3",
+        "sourceInfo": {
+          "path": "https://s3.amazonaws.com/<Your_S3_Bucket_Name>/<Windows_Script_Path>"
+        },
+        "destinationPath": ""
+      }
+    },
+    {
+      "action": "aws:runPowerShellScript",
+      "name": "ManageWindows",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Windows"
+        ]
+      },
+      "inputs": {
+        "runCommand": [
+          "",
+          "$directory = Convert-Path .",
+          "$env:PATH += \";$directory\"",
+          "<Windows_Command_to_Run_Script>",
+          "if ($?) {",
+          "    exit $LASTEXITCODE",
+          "} else {",
+          "    exit 255",
+          "}",
+          ""
+        ],
+        "workingDirectory": ""
+      }
+    },
+    {
+      "action": "aws:downloadContent",
+      "name": "downloadShellScript",
+      "timeoutSeconds": 3600,
+      "maxAttempts": 5,
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Linux"
+        ]
+      },
+      "inputs": {
+        "sourceType": "S3",
+        "sourceInfo": {
+          "path": "https://s3.amazonaws.com/<Your_S3_Bucket_Name>/<Linux_Script_Path>"
+        },
+        "destinationPath": ""
+      }
+    },
+    {
+      "action": "aws:runShellScript",
+      "name": "ManageLinux",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Linux"
+        ]
+      },
+      "inputs": {
+        "runCommand": [
+          "",
+          "directory=$(pwd)",
+          "export PATH=$PATH:$directory",
+          "<Linux_Command_to_Run_Script>",
+          ""
+        ],
+        "workingDirectory": ""
+      }
+    }
+  ]
+}'

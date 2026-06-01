@@ -1,0 +1,1002 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates Required Event Rules in Parent Event Bus
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - OrganizationId
+          - IsControlTowerEnabled
+          - IsOrganizationTrail
+          - CentralizedLogsS3BucketName
+          - EnableGuardDuty
+          - GuardDutySeverityLevels
+      - Label:
+          default: Lambda Functions
+        Parameters:
+          - EventsProcessorLambdaARN
+          - ResourceTrackerReportsLambdaARN
+          - UnusedResourcesDetectorLambdaARN
+          - CreateEventBusRuleGuardDutyFindingsLambdaARN
+      - Label:
+          default: Step Functions
+        Parameters:
+          - SSOUserReportGeneratorSfnARN
+          - SSMInstanceAutomationSfnARN
+      - Label:
+          default: Post Deploy SSM Automation
+        Parameters:
+          - AddSupportforPostDeploySSMAutomation
+          - TrackSSMDocumentAssociationFailures
+      - Label:
+          default: User Offboarding Workflow Project
+        Parameters:
+          - AddSupportforUserOffboardingWorkflow
+      - Label:
+          default: IAM Secret-Access KeyPair Access Tracker Project
+        Parameters:
+          - AddSupportforIAMKeyPairAccessTracker
+      - Label:
+          default: CMDB Project
+        Parameters:
+          - AddSupportforCMDB
+      - Label:
+          default: IP Tracker Project
+        Parameters:
+          - AddSupportforIPTracker
+      - Label:
+          default: VPC FlowLogs
+        Parameters:
+          - EnableVpcFlowLogs
+          - FlowLogsDeliveryBucketPrefix
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      OrganizationId:
+        default: Organization Id
+      IsControlTowerEnabled:
+        default: Is Control Tower enabled in your Organization?
+      IsOrganizationTrail:
+        default: Specify whether the trails apply to all accounts in an organization in AWS Organizations, or only for the current AWS account
+      CentralizedLogsS3BucketName:
+        default: Name of S3 Bucket to store the Cloudtrail logs (Skip if Data Trail is not being created organization-wide)
+      EnableGuardDuty:
+        default: Enable GuardDuty?
+      GuardDutySeverityLevels:
+        default: Specify the severity levels of GuardDuty findings to be processed
+      EventsProcessorLambdaARN:
+        default: ARN of EventsProcessor Lambda Function
+      ResourceTrackerReportsLambdaARN:
+        default: ARN of Resource Tracker Reports Lambda Function
+      UnusedResourcesDetectorLambdaARN:
+        default: ARN of UnusedResourcesDetector Lambda Function
+      CreateEventBusRuleGuardDutyFindingsLambdaARN:
+        default: ARN of GuardDuty EventRule Creator Lambda Function
+      SSOUserReportGeneratorSfnARN:
+        default: ARN of SSO User Resource Report Generator Step Function
+      SSMInstanceAutomationSfnARN:
+        default: ARN of SSM Instance Automation Step Function
+      AddSupportforPostDeploySSMAutomation:
+        default: Enable Post Deploy SSM Automation Project?
+      TrackSSMDocumentAssociationFailures:
+        default: Track Failures for SSM Document Association?
+      AddSupportforUserOffboardingWorkflow:
+        default: Deploy User Offboarding Workflow Project?
+      AddSupportforIAMKeyPairAccessTracker:
+        default: Deploy IAM Secret-Access KeyPair Access Tracker Project?
+      AddSupportforCMDB:
+        default: Deploy CMDB Project?
+      AddSupportforIPTracker:
+        default: Deploy IP Tracker Project?
+      EnableVpcFlowLogs:
+        default: Enable VPC FlowLogs?
+      FlowLogsDeliveryBucketPrefix:
+        default: Flow Logs Delivery Bucket Prefix
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  OrganizationId:
+    Type: String
+    Description: ID of current organization to allow the child accounts to send events to event bus
+  IsControlTowerEnabled:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if control tower is enabled in your organization
+  IsOrganizationTrail:
+    Type: String
+    Description: Set to True if you want to apply trails to all accounts in your organization
+    AllowedValues:
+    - true
+    - false
+  CentralizedLogsS3BucketName:
+    Type: String
+    Description: ControlTower bucket name follows this naming convention `aws-controltower-logs-<LogArchiveAccountID>-<region>`. If ControlTower is not enabled, provide S3 Bucket name in current region.
+  EnableGuardDuty:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable GuardDuty
+  GuardDutySeverityLevels:
+    Type: String
+    Description: Comma-Separated list of severity levels (e.g., 'HIGH,MEDIUM')
+  EventsProcessorLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  ResourceTrackerReportsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  UnusedResourcesDetectorLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  CreateEventBusRuleGuardDutyFindingsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUserReportGeneratorSfnARN:
+    Type: String
+    Description: Step Function ARN
+  SSMInstanceAutomationSfnARN:
+    Type: String
+    Description: Step Function ARN
+  AddSupportforPostDeploySSMAutomation:
+    Type: String
+    Description: Set to True if you want to enable Post Deploy SSM Automation Project
+    AllowedValues:
+    - true
+    - false
+  TrackSSMDocumentAssociationFailures:
+    Type: String
+    Description: Set to True if you want to track failures for SSM Document Association
+    AllowedValues:
+    - true
+    - false
+  AddSupportforUserOffboardingWorkflow:
+    Type: String
+    Description: Set to True if you want User Offboarding Workflow Project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIAMKeyPairAccessTracker:
+    Type: String
+    Description: Set to True if you want IAM Secret-Access KeyPair Access Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforCMDB:
+    Type: String
+    Description: Set to True if you want CMDB project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIPTracker:
+    Type: String
+    Description: Set to True if you want IP Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  EnableVpcFlowLogs:
+    Type: String
+    Description: Set to True if you want to enable VPC FlowLogs
+    AllowedValues:
+    - true
+    - false
+  FlowLogsDeliveryBucketPrefix:
+    Type: String
+    Description: Bucket Prefix
+
+Conditions:
+  ControlTowerEnabled: !Equals
+  - !Ref IsControlTowerEnabled
+  - true
+  OrganizationTrail: !Equals
+  - !Ref IsOrganizationTrail
+  - true
+  IsGuardDutyEnabled: !Equals
+  - !Ref EnableGuardDuty
+  - true
+  IsVpcFlowLogsEnabled: !Equals
+  - !Ref EnableVpcFlowLogs
+  - true
+  CreateS3DataRuleFilters: !Or
+  - !Condition ControlTowerEnabled
+  - !Condition OrganizationTrail
+  - !Condition IsVpcFlowLogsEnabled
+
+  DeploySSMAutomationProject: !Equals
+  - !Ref AddSupportforPostDeploySSMAutomation
+  - true
+  DeployUserOffboardingWorkflowProject: !Equals
+  - !Ref AddSupportforUserOffboardingWorkflow
+  - true
+  DeployIAMKeyPairAccessTrackerProject: !Equals
+  - !Ref AddSupportforIAMKeyPairAccessTracker
+  - true
+  DeployCMDBProject: !Equals
+  - !Ref AddSupportforCMDB
+  - true
+  DeployIPTrackerProject: !Equals
+  - !Ref AddSupportforIPTracker
+  - true
+  IsEnabledUnusedResourcesDetection: !Not [ !Equals [ !Ref UnusedResourcesDetectorLambdaARN, "" ] ]
+
+  TrackSSMAssociationFailures: !Equals
+  - !Ref TrackSSMDocumentAssociationFailures
+  - true
+
+  CreateSSMAutomationSSOCommonResources: !Or
+  - !Condition DeploySSMAutomationProject
+  - !Condition DeployUserOffboardingWorkflowProject
+
+  CreateCaptureExistingResources: !Or
+  - !Condition DeployIAMKeyPairAccessTrackerProject
+  - !Condition DeployCMDBProject
+
+Resources:
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${ProjectName}-eventbus"
+
+  EventBusPolicy:
+    Type: AWS::Events::EventBusPolicy
+    Properties:
+      EventBusName: !Ref EventBus
+      StatementId: !Ref EventBus
+      Statement:
+        Effect: Allow
+        Principal: "*"
+        Action: events:PutEvents
+        Resource: !GetAtt EventBus.Arn
+        Condition:
+          StringEquals:
+            aws:PrincipalOrgID: !Ref OrganizationId
+
+  EventBusRuleEC2ResourcesManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-ec2-resources-manager"
+      Description: Trigger Lambda whenever event is obtained in EventBus when an EC2 Resource is created/modfied/deleted
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - ec2.amazonaws.com
+          eventName:
+            - AuthorizeSecurityGroupIngress
+            - ModifySecurityGroupRules
+            - ModifyNetworkInterfaceAttribute
+            - CreateSecurityGroup
+            - DeleteSecurityGroup
+            - RunInstances
+            - !If [ DeployCMDBProject, TerminateInstances, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, AssociateIamInstanceProfile, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, ReplaceIamInstanceProfileAssociation, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, DisassociateIamInstanceProfile, !Ref AWS::NoValue ]
+            - CreateVpc
+            - CreateSubnet
+            - CreateVolume
+            - AllocateAddress
+            - AssociateAddress
+            - CreateSnapshot
+            - ModifySnapshotAttribute
+            - ModifyImageAttribute
+            - CreateImage
+            - CreateTags
+            - DeleteTags
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleEC2InstanceAutomation:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-ec2-instance-automation"
+      Description: Trigger SSM Automation StepFunction whenever event is obtained in EventBus for when EC2 Instance's status changes to 'running'
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state: ["running"]
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SSMInstanceAutomationSfnARN
+          RoleArn: !GetAtt EventBusRuleIAMRole.Arn
+          Id: SSMInstanceAutomationStepFunction
+
+  EventBusRuleIAMResourcesManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-iam-resources-manager"
+      Description: Trigger Lambda whenever event is obtained in EventBus when an IAM Resource is created/attached/modified/untagged/deleted
+      EventPattern:
+        source:
+          - aws.iam
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - iam.amazonaws.com
+          eventName:
+            - AttachRolePolicy
+            - PutRolePolicy
+            - UntagRole
+            - CreateUser
+            - UpdateLoginProfile
+            - DeleteUser
+            - CreateAccessKey
+            - !If [ DeployIAMKeyPairAccessTrackerProject, DeleteAccessKey, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, DetachRolePolicy, !Ref AWS::NoValue ]
+            - CreateLoginProfile
+            - TagUser
+            - UntagUser
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleS3ManagementEventsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-s3-management-events-manager"
+      Description: Trigger Lambda whenever event is obtained in EventBus for management events for S3 Resource for create/modify/delete/tag/untag
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutBucketPolicy
+            - PutBucketAcl
+            - PutObjectAcl
+            - PutAccountPublicAccessBlock
+            - PutBucketTagging
+            - DeleteBucketTagging
+            - DeleteBucket
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleS3DataEventsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-s3-data-events-manager"
+      Description: Trigger Lambda whenever event is obtained in EventBus for data events for S3 Objects
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutObject
+          requestParameters:
+            Fn::If:
+            - CreateS3DataRuleFilters
+            - bucketName:
+                - anything-but:
+                    prefix:
+                      - !If [ControlTowerEnabled, "aws-controltower", !Ref AWS::NoValue]
+                      - !If [OrganizationTrail, !Ref CentralizedLogsS3BucketName, !Ref AWS::NoValue]
+                      - !If [IsVpcFlowLogsEnabled, !Ref FlowLogsDeliveryBucketPrefix, !Ref AWS::NoValue]
+            - !Ref AWS::NoValue
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleFsxCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-fsx-creation"
+      Description: Trigger Lambda whenever events is obtained in EventBus when an FSX is created
+      EventPattern:
+        source:
+          - aws.fsx
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - fsx.amazonaws.com
+          eventName:
+            - CreateFileSystem
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleEC2InstanceStateChange:
+    Condition: DeployCMDBProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-ec2-instance-state-change"
+      Description: Trigger Lambda whenever event is obtained in EventBus for EC2 Instance's status change
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state: ["running", "stopping", "stopped"]
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleRdsStateChangeManager:
+    Condition: DeployCMDBProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-rds-state-change-manager"
+      Description: Trigger Lambda whenever event is obtained in EventBus for RDS DB Instance's/Cluster's state changes
+      EventPattern:
+        source:
+          - aws.rds
+        detail-type:
+          - RDS DB Instance Event
+          - RDS DB Cluster Event
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleEksClusterManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-eks-cluster-manager"
+      Description: Trigger Lambda whenever events is obtained in EventBus for an EKS Cluster creation/deletion
+      EventPattern:
+        source:
+          - aws.eks
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - eks.amazonaws.com
+          eventName:
+            - CreateCluster
+            - !If [ DeployCMDBProject, DeleteCluster, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, TagResource, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, UntagResource, !Ref AWS::NoValue ]
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleRdsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-rds-manager"
+      Description: Trigger Lambda whenever events is obtained in EventBus for an RDS Cluster/Instance creation/deletion
+      EventPattern:
+        source:
+          - aws.rds
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - rds.amazonaws.com
+          eventName:
+            - ModifyDBSnapshotAttribute
+            - ModifyDBClusterSnapshotAttribute
+            - CreateDBCluster
+            - CreateDBInstance
+            - !If [ DeployCMDBProject, DeleteDBCluster, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, DeleteDBInstance, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, AddTagsToResource, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, RemoveTagsFromResource, !Ref AWS::NoValue ]
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleEfsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-efs-manager"
+      Description: Trigger Lambda whenever events is obtained in EventBus for an EFS FileSystem's creation/deletion
+      EventPattern:
+        source:
+          - aws.elasticfilesystem
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - elasticfilesystem.amazonaws.com
+          eventName:
+            - CreateFileSystem
+            - !If [ DeployCMDBProject, DeleteFileSystem, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, TagResource, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, UntagResource, !Ref AWS::NoValue ]
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleSecretsCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-secrets-creation"
+      Description: Trigger Lambda whenever event is obtained in EventBus when SecretsManager Secret is created
+      EventPattern:
+        source:
+          - aws.secretsmanager
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - secretsmanager.amazonaws.com
+          eventName:
+            - CreateSecret
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleBackupPlanCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-backup-plan-creation"
+      Description: Trigger Lambda whenever event is obtained in EventBus when a Backup Plan is created
+      EventPattern:
+        source:
+          - aws.backup
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - backup.amazonaws.com
+          eventName:
+            - CreateBackupPlan
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleLoadBalancerCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-loadbalancer-creation"
+      Description: Trigger Lambda whenever event is obtained in EventBus when a LoadBalancer is created
+      EventPattern:
+        source:
+          - aws.elasticloadbalancing
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - elasticloadbalancing.amazonaws.com
+          eventName:
+            - CreateLoadBalancer
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleUserLogin:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-user-login"
+      Description: Trigger Lambda whenever event is obtained in EventBus when User Logs in
+      EventPattern:
+        source:
+          - aws.signin
+        detail-type:
+          - AWS Console Sign In via CloudTrail
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  CreateEventBusRuleGuardDutyFindings:
+    Condition: IsGuardDutyEnabled
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: events
+      ServiceToken: !Ref CreateEventBusRuleGuardDutyFindingsLambdaARN
+      KwArgs:
+        EventBusName: !Ref EventBus
+        Name: !Sub "${ProjectName}-guardduty-findings-rule"
+        Description: Trigger Lambda whenever there's a GuardDuty finding
+        EventPattern:
+          source:
+          - aws.guardduty
+          detail-type:
+          - GuardDuty Finding
+          detail:
+            severity: !Ref GuardDutySeverityLevels
+        State: ENABLED
+        Targets:
+        - Id: ProcessEvents
+          Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleUnusedResources:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-unused-resources"
+      Description: Trigger Lambda whenever event is obtained in EventBus when an unused Resource is detected
+      EventPattern:
+        source:
+          - detect-unused-resources
+        detail-type:
+          - Detect Unused Resources
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleCaptureExistingResources:
+    Condition: CreateCaptureExistingResources
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-capture-existing-resources"
+      Description: Trigger Lambda whenever events is obtained in EventBus when an existing resource is captured
+      EventPattern:
+        source:
+          - capture-existing-resources
+        detail-type:
+          - Capture Existing Resources
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleSSOUserLogin:
+    Condition: DeployIPTrackerProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-sso-user-login-detection"
+      Description: Trigger Lambda whenever events is obtained in EventBus for User Logins
+      EventPattern:
+        source:
+          - aws.sso
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - sso.amazonaws.com
+          eventName:
+            - Authenticate
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventRuleTrackSSOUsersAwsIPs:
+    Condition: DeployIPTrackerProject
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-custom-sso-users-data-updater"
+      Description: Trigger Lambda whenever is obtained for tracking SSO Users AWS IPs
+      EventPattern:
+        source:
+        - track-sso-user-aws-ip
+        detail-type:
+        - 'Custom Event'
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventRuleStepFunctionUserIpLambda:
+    Condition: DeployIPTrackerProject
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-trigger-ip-tracker-process-lambda"
+      Description: Trigger Lambda whenever execution of Step Function is successful
+      EventPattern:
+        source:
+        - aws.states
+        detail-type:
+        - 'Step Functions Execution Status Change'
+        detail:
+          stateMachineArn:
+            - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ProjectName}-fetch-and-store-sso-users-aws-ip-data"
+          status:
+            - SUCCEEDED
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleSSMDocAssocFailureTracker:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-track-ssm-doc-assoc-failures"
+      Description: Trigger Lambda whenever events is obtained in EventBus for SSM Document Association failures
+      EventPattern:
+        source:
+          - aws.ssm
+        detail-type:
+          - EC2 State Manager Instance Association State Change
+        detail:
+          status:
+          - Success
+          - Failed
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  UnusedResourcesAlertCronRule:
+    Condition: IsEnabledUnusedResourcesDetection
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-unused-resources-alert"
+      ScheduleExpression: cron(10 23 ? * * *)
+      State: ENABLED
+      Targets:
+      - Id: trigger-unused-resources-detector-lambda
+        Arn: !Ref UnusedResourcesDetectorLambdaARN
+
+  HourlySchedulerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-hourly-scheduler"
+      ScheduleExpression: cron(00 * ? * * *)
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  DailySchedulerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-daily-scheduler"
+      ScheduleExpression: cron(00 23 ? * * *)
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+      - Id: ResourceTrackerReports
+        Arn: !Ref ResourceTrackerReportsLambdaARN
+
+  WeeklySchedulerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-weekly-scheduler"
+      ScheduleExpression: cron(00 13 ? * 2 *)
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  MonthlyCostReportGeneratorRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-monthly-cost-report-generator"
+      ScheduleExpression: cron(00 13 1 * ? *)
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleSSOUserDisable:
+    Condition: DeployUserOffboardingWorkflowProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-sso-user-disable"
+      Description: Trigger Step Function whenever events is obtained in EventBus when an SSO User is disabled
+      EventPattern:
+        source:
+          - aws.sso-directory
+          - aws.identitystore
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso-directory.amazonaws.com
+            - identitystore.amazonaws.com
+          eventName:
+            - DisableUser
+      State: ENABLED
+      Targets:
+      - Id: GenerateSSOUserReportSfn
+        Arn: !Ref SSOUserReportGeneratorSfnARN
+        RoleArn: !GetAtt EventBusRuleIAMRole.Arn
+
+  EventBusRuleSSOUserDelete:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-sso-user-delete"
+      Description: Trigger Lambda and Step Function whenever events is obtained in EventBus when an SSO User is deleted
+      EventPattern:
+        source:
+          - aws.sso-directory
+          - aws.identitystore
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso-directory.amazonaws.com
+            - identitystore.amazonaws.com
+          eventName:
+            - DeleteUser
+      State: ENABLED
+      Targets:
+        - Arn: !Ref EventsProcessorLambdaARN
+          Id: ProcessEvents
+        - Fn::If:
+          - DeployUserOffboardingWorkflowProject
+          - Arn: !Ref SSOUserReportGeneratorSfnARN
+            RoleArn: !GetAtt EventBusRuleIAMRole.Arn
+            Id: GenerateSSOUserReportSfn
+          - !Ref AWS::NoValue
+
+  EventBusRuleSSOUserCreate:
+    Condition: DeployIPTrackerProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-sso-user-create"
+      Description: Trigger Lambda whenever events is obtained in EventBus when an SSO User is created
+      EventPattern:
+        source:
+          - aws.sso-directory
+          - aws.identitystore
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso-directory.amazonaws.com
+            - identitystore.amazonaws.com
+          eventName:
+            - CreateUser
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleIAMUserEvents:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-iam-user-events"
+      Description: Trigger Lambda whenever events is obtained in EventBus for IAM User Events via Secret-Access KeyPair
+      EventPattern:
+        source:
+          - prefix: ""
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          userIdentity:
+            type: [ "IAMUser" ]
+            accessKeyId:
+              - prefix: ""
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleOrgAccountCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-org-aws-account-creation"
+      Description: Trigger Lambda whenever events is obtained in EventBus for a new AWS Account Creation through AWS Organizations
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - organizations.amazonaws.com
+          eventName:
+            - CreateAccountResult
+          serviceEventDetails:
+            createAccountStatus:
+              state:
+              - SUCCEEDED
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleCTAccountCreation:
+    Condition: ControlTowerEnabled
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventBus
+      Name: !Sub "${ProjectName}-ct-aws-account-creation"
+      Description: Trigger Lambda whenever events is obtained in EventBus for a new AWS Account Creation through AWS Control Tower Account Factory
+      EventPattern:
+        source:
+          - aws.controltower
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - controltower.amazonaws.com
+          eventName:
+            - CreateManagedAccount
+          serviceEventDetails:
+            createManagedAccountStatus:
+              state:
+              - SUCCEEDED
+      State: ENABLED
+      Targets:
+      - Id: ProcessEvents
+        Arn: !Ref EventsProcessorLambdaARN
+
+  EventBusRuleIAMRole:
+    Condition: CreateSSMAutomationSSOCommonResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-handle-sso-user-manager-events"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: AllowStartExecution
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - states:StartExecution
+            Resource:
+            - !If [DeployUserOffboardingWorkflowProject, !Ref SSOUserReportGeneratorSfnARN, !Ref AWS::NoValue]
+            - !If [DeploySSMAutomationProject, !Ref SSMInstanceAutomationSfnARN, !Ref AWS::NoValue]
+
+Outputs:
+  EventBusName:
+    Description: Name of main EventBus
+    Value: !Ref EventBus

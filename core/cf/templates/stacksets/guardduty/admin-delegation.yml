@@ -1,0 +1,360 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Delegates Admin for GuardDuty in all regions"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - GuardDutyAdminAccountId
+          - AutomationAccountId
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      GuardDutyAdminAccountId:
+        default: ID of AWS Account for GuardDuty Admin Delegation
+      AutomationAccountId:
+        default: Automation Account ID
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  GuardDutyAdminAccountId:
+    Type: String
+    Description: Account ID
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+
+Resources:
+  AdminDelegationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-guardduty-admin-delegate-lambda-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:DeregisterDelegatedAdministrator"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            Resource: '*'
+      - PolicyName: GuardDutyWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: GuardDutyAccess
+            Effect: Allow
+            Action:
+            - guardduty:ListOrganizationAdminAccounts
+            - guardduty:EnableOrganizationAdminAccount
+            - guardduty:DisableOrganizationAdminAccount
+            Resource: "*"
+
+  EnableServiceAccessLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-enable-service-access"
+      Timeout: 300
+      Role: !GetAtt AdminDelegationLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          from botocore.exceptions import ClientError
+          import json
+          from time import sleep
+          import requests
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              retry_attempts = 0
+              max_retry_attempts = 5
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      if check_aws_service_access(client, principal_name) is False:
+                          print(f"Enabling service access for {principal_name} in Management Account")
+                          data = method(ServicePrincipal=principal_name)
+                      else:
+                          print(f"Organizations service access for {principal_name} is already enabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      print(f"Disabling service access for {principal_name}")
+                      if check_aws_service_access(client, principal_name) is True:
+                          while retry_attempts < max_retry_attempts:
+                              try:
+                                  data = method(ServicePrincipal=principal_name)
+                                  break
+                              except ClientError as error:
+                                  if error.response['Error']['Code'] == 'ConcurrentModificationException' and retry_attempts < max_retry_attempts:
+                                      retry_attempts += 1
+                                      print(f"Request conflicts with another attempt to modify the same entity. Retrying again in 30 seconds")
+                                      sleep(30)
+                                      continue
+                                  raise error
+                      else:
+                          print(f"Organizations service access for {principal_name} is already disabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def check_aws_service_access(org_client, principal_name) -> bool:
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              aws_service_access_enabled = False
+              print(f"Checking service access for {principal_name}...")
+              while retry_attempts < max_retry_attempts:
+                  try:
+                      org_svc_response = org_client.list_aws_service_access_for_organization()
+                      for service in org_svc_response["EnabledServicePrincipals"]:
+                          if service["ServicePrincipal"] == principal_name:
+                              aws_service_access_enabled = True
+                              return True
+                      break
+                  except org_client.exceptions.ClientError as error:
+                      if error.response['Error']['Code'] == 'AccessDeniedException':
+                          print(f"Unable to check service access for {principal_name}: {error}")
+                          break
+                      if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                          retry_attempts += 1
+                          print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                          sleep(delay)
+                          delay *= 2
+                          continue
+                      print(str(error))
+                      break
+              return aws_service_access_enabled
+
+  DelegateAdminAccountLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-admin-delegation"
+      Timeout: 300
+      Role: !GetAtt AdminDelegationLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from time import sleep
+          from botocore.exceptions import ClientError
+          import requests
+          MAX_RETRY_ATTEMPTS = 5
+          DELAY_SECONDS=3
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              physical_resource_id = ''
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  physical_resource_id = f"/guardduty/admin/{kwargs['AdminAccountId']}"
+                  method=getattr(client, 'enable_organization_admin_account')
+                  retry_attempts = 0
+                  delay = DELAY_SECONDS
+                  while retry_attempts < MAX_RETRY_ATTEMPTS:
+                      try:
+                          response = client.list_organization_admin_accounts()
+                          if enable_admin_account(kwargs['AdminAccountId'], response):
+                              data = method(**kwargs)
+                              sleep(30)
+                              status = 'SUCCESS'
+                              reason = ''
+                              break
+                          print(f"{kwargs['AdminAccountId']} is already set as delegated administrator for GuardDuty")
+                          break
+                      except client.exceptions.ClientError as error:
+                          if retry_attempts < MAX_RETRY_ATTEMPTS:
+                              retry_attempts += 1
+                              print(f"{str(error)}. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(f"{str(error)}")
+                          break
+                      except Exception as e:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                          break
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_organization_admin_account')
+                  organizations = boto3.client('organizations')
+                  try:
+                      physical_resource_id = f"/guardduty/admin/{kwargs['AdminAccountId']}"
+                      response = client.list_organization_admin_accounts()
+                      if disable_admin_account(kwargs['AdminAccountId'], response):
+                          data = method(**kwargs)
+                          organizations.deregister_delegated_administrator(
+                              AccountId=kwargs['AdminAccountId'],
+                              ServicePrincipal='guardduty.amazonaws.com'
+                          )
+                      status = 'SUCCESS'
+                      reason = ''
+                  except client.exceptions.BadRequestException as error:
+                      if 'delegated administrator account has already been disabled' in str(error):
+                          print(f"{str(error)}")
+                      else:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                  except organizations.exceptions.AccountNotRegisteredException:
+                      print(f"Account {kwargs['AdminAccountId']} not registered as delegated admin")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': physical_resource_id,
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def enable_admin_account(admin_account_id: str, response) -> bool:
+              if not response["AdminAccounts"]:
+                  return True
+              is_admin_account = [admin_account for admin_account in response["AdminAccounts"] if admin_account["AdminAccountId"] == admin_account_id]
+              if not is_admin_account:
+                  return True
+              return False
+          def disable_admin_account(admin_account_id: str, response) -> bool:
+              if "AdminAccounts" in response and response["AdminAccounts"]:
+                  for admin_account in response["AdminAccounts"]:
+                      if admin_account["AdminStatus"] == "ENABLED" and admin_account["AdminAccountId"] == admin_account_id:
+                          return True
+              return False
+
+  EnableServiceAccess:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: organizations
+      ServiceToken: !GetAtt EnableServiceAccessLambda.Arn
+      KwArgs:
+        ServicePrincipal: "malware-protection.guardduty.amazonaws.com"
+
+  DelegateAdminAccount:
+    DependsOn: EnableServiceAccess
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt DelegateAdminAccountLambda.Arn
+      KwArgs:
+        AdminAccountId: !Ref GuardDutyAdminAccountId
+
+Outputs:
+  AdminAccountId:
+    Description: ID of GuardDuty Admin Account
+    Value: !Ref GuardDutyAdminAccountId

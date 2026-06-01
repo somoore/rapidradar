@@ -1,0 +1,530 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Delegates Admin for Inspector2 in all regions"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - InspectorAdminAccountId
+          - AutomationAccountId
+      - Label:
+          default: Inspector Configuration
+        Parameters:
+          - ScanComponents
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      InspectorAdminAccountId:
+        default: ID of AWS Account for Inspector2 Admin Delegation
+      AutomationAccountId:
+        default: Automation Account ID
+      ScanComponents:
+        default: Comma separated list of scan components (EC2, ECR, LAMBDA, LAMBDA_CODE)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  InspectorAdminAccountId:
+    Type: String
+    Description: Account ID
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  ScanComponents:
+    Type: List<String>
+    AllowedValues: [EC2, ECR, LAMBDA, LAMBDA_CODE]
+    Description: Scan Components for Inspector
+
+Resources:
+  DelegateAdminAccountLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:DeregisterDelegatedAdministrator"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            - iam:DeleteServiceLinkedRole
+            Resource: '*'
+      - PolicyName: Inspector2ReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InspectorAccess
+            Effect: Allow
+            Action:
+            - inspector2:EnableDelegatedAdminAccount
+            - inspector2:DisableDelegatedAdminAccount
+            - inspector2:Enable
+            - inspector2:BatchGetAccountStatus
+            - inspector2:Disable
+            - inspector2:DescribeOrganizationConfiguration
+            - inspector2:ListDelegatedAdminAccounts
+            Resource: '*'
+
+  EnableServiceAccessLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-inspector2-enable-service-access"
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          from botocore.exceptions import ClientError
+          import json
+          from time import sleep
+          import requests
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              retry_attempts = 0
+              max_retry_attempts = 5
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      if check_aws_service_access(client, principal_name) is False:
+                          print(f"Enabling service access for {principal_name} in Management Account")
+                          data = method(ServicePrincipal=principal_name)
+                      else:
+                          print(f"Organizations service access for {principal_name} is already enabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_aws_service_access')
+                  try:
+                      principal_name = kwargs['ServicePrincipal']
+                      print(f"Disabling service access for {principal_name}")
+                      if check_aws_service_access(client, principal_name) is True:
+                          while retry_attempts < max_retry_attempts:
+                              try:
+                                  data = method(ServicePrincipal=principal_name)
+                                  break
+                              except ClientError as error:
+                                  if error.response['Error']['Code'] == 'ConcurrentModificationException' and retry_attempts < max_retry_attempts:
+                                      retry_attempts += 1
+                                      print(f"Request conflicts with another attempt to modify the same entity. Retrying again in 30 seconds")
+                                      sleep(30)
+                                      continue
+                                  raise error
+                      else:
+                          print(f"Organizations service access for {principal_name} is already disabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def check_aws_service_access(org_client, principal_name) -> bool:
+              aws_service_access_enabled = False
+              print(f"Checking service access for {principal_name}...")
+              try:
+                  org_svc_response = org_client.list_aws_service_access_for_organization()
+                  for service in org_svc_response["EnabledServicePrincipals"]:
+                      if service["ServicePrincipal"] == principal_name:
+                          aws_service_access_enabled = True
+                          return True
+              except org_client.exceptions.AccessDeniedException as error:
+                  print(f"Unable to check service access for {principal_name}: {error}")
+              return aws_service_access_enabled
+
+  EnableManagementInspector2Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-inspector2-management-enabler"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          from os import getenv
+          import time
+          import requests
+          import boto3
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          ENABLE_RETRY_ATTEMPTS = 10
+          ENABLE_RETRY_SLEEP_INTERVAL = 10
+          ALL_INSPECTOR_SCAN_COMPONENTS = ["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"]
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  try:
+                      kwargs['accountIds'] = [ACCOUNT_ID]
+                      print("Enabling Inspector2...")
+                      if not is_lambda_code_scanning_supported():
+                          if 'LAMBDA_CODE' in kwargs['resourceTypes']:
+                              kwargs['resourceTypes'].remove('LAMBDA_CODE')
+                      for attempt_iteration in range(1, ENABLE_RETRY_ATTEMPTS):
+                          if get_inspector_status(client, ACCOUNT_ID, kwargs['resourceTypes']) != "enabled":
+                              print(f"Attempt {attempt_iteration} - enabling inspector in the ({ACCOUNT_ID}) account...")
+                              try:
+                                  enable_inspector_response = method(**kwargs)
+                                  api_call_details = {"API_Call": "inspector:Enable", "API_Response": enable_inspector_response}
+                                  print(api_call_details)
+                              except client.exceptions.ConflictException:
+                                  print(f"inspector already enabled in {ACCOUNT_ID}")
+                          else:
+                              print(f"Inspector is enabled in the {ACCOUNT_ID} account")
+                              break
+                          time.sleep(ENABLE_RETRY_SLEEP_INTERVAL)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = value
+                  try:
+                      if get_inspector_status(client, ACCOUNT_ID, kwargs['resourceTypes']) != "disabled":
+                          print(ACCOUNT_ID + ", MEMBER")
+                          if not is_lambda_code_scanning_supported():
+                              ALL_INSPECTOR_SCAN_COMPONENTS.remove('LAMBDA_CODE')
+                          disable_inspector2_response = disable_inspector2(client, ACCOUNT_ID, ALL_INSPECTOR_SCAN_COMPONENTS)
+                          print(disable_inspector2_response)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_lambda_code_scanning_supported() -> bool:
+              supported_regions = [ "us-east-1", "us-west-2", "us-east-2", "ap-southeast-2", "ap-northeast-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-north-1", "ap-southeast-1" ]
+              if CURRENT_REGION in supported_regions:
+                  return True
+              return False
+          def get_inspector_status(inspector2_client, account_id: str, scan_components: list) -> str:
+              print(f"get_inspector_status: scan_components - ({scan_components})")
+              print(f"Checking inspector service status for {account_id} account...")
+              enabled_components = 0
+              inspector_status_response = inspector2_client.batch_get_account_status(accountIds=[account_id])
+              api_call_details = {"API_Call": "inspector:BatchGetAccountStatus", "API_Response": inspector_status_response}
+              print(api_call_details)
+              for status in inspector_status_response["accounts"]:
+                  if status["state"]["status"] == "ENABLED":
+                      print(f"Status: {status['state']['status']}")
+                      for scan_component in scan_components:
+                          print(f"{scan_component} status: {status['resourceState'][snake_to_camel(scan_component)]['status']}")  # type: ignore
+                          if status["resourceState"][snake_to_camel(scan_component)]["status"] != "ENABLED":  # type: ignore
+                              print(f"{scan_component} scan component is disabled...")
+                          else:
+                              print(f"{scan_component} scan component is enabled...")
+                              enabled_components = enabled_components + 1
+                  else:
+                      inspector_status = "disabled"
+                      return inspector_status
+              if 0 < enabled_components < len(scan_components):
+                  inspector_status = "partial"
+              elif enabled_components == len(scan_components):
+                  inspector_status = "enabled"
+              else:
+                  inspector_status = "disabled"
+              return inspector_status
+          def disable_inspector2(inspector2_client, account_id: str, scan_components: list):
+              print(f"disable_inspector2: scan_components - ({scan_components})")
+              disable_inspector_response = inspector2_client.disable(
+                  accountIds=[
+                      account_id,
+                  ],
+                  resourceTypes=scan_components,
+              )
+              return disable_inspector_response
+          def snake_to_camel(snake_str: str) -> str:
+              camel_str = snake_str.title().replace("_", "")
+              return camel_str[0].lower() + camel_str[1:]
+
+  DelegateAdminAccountLambda:
+    DependsOn: EnableServiceAccessLambda
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-inspector2-admin-delegation"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt DelegateAdminAccountLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import requests
+          import boto3
+          INSPECTOR_THROTTLE_PERIOD = 0.2
+          MAX_RETRY_ATTEMPTS = 5
+          DELAY_SECONDS = 3
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = str(value)
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_delegated_admin_account')
+                  try:
+                      admin_account_id = kwargs['delegatedAdminAccountId']
+                      if not is_admin_account_enabled(client, admin_account_id):
+                          delegated_admin_response = method(**kwargs)
+                          api_call_details = {"API_Call": "inspector:EnableDelegatedAdminAccount", "API_Response": delegated_admin_response}
+                          print(api_call_details)
+                          print(f"Delegated admin ({admin_account_id}) enabled")
+                      else:
+                          print("Delegated admin already enabled")
+                  except client.exceptions.ConflictException:
+                      print("Delegated admin already enabled")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_delegated_admin_account')
+                  try:
+                      for admin_account in get_admin_accounts(client):
+                          response = method(delegatedAdminAccountId=admin_account)
+                          api_call_details = {"API_Call": "inspector2:DisableDelegatedAdminAccount", "API_Response": response}
+                          print(api_call_details)
+                          print(f"Admin Account {admin_account} Disabled")
+                      if not deregister_org_delegated_admin():
+                          print("Could not deregister delegated admins from organizations")
+                  except client.exceptions.ResourceNotFoundException:
+                      print(f"Account {kwargs['delegatedAdminAccountId']} not registered as delegated admin")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_admin_account_enabled(inspector_client, admin_account_id: str) -> bool:
+              paginator = inspector_client.get_paginator("list_delegated_admin_accounts")
+              for page in paginator.paginate():
+                  for admin_account in page["delegatedAdminAccounts"]:
+                      if admin_account["accountId"] == admin_account_id and admin_account["status"] == "ENABLED":
+                          return True
+                  sleep(INSPECTOR_THROTTLE_PERIOD)
+              return False
+          def get_admin_accounts(inspector_client) -> list:
+              admin_accounts = []
+              paginator = inspector_client.get_paginator("list_delegated_admin_accounts")
+              for page in paginator.paginate():
+                  for admin_account in page["delegatedAdminAccounts"]:
+                      if admin_account["status"] == "ENABLED":
+                          admin_accounts.append(admin_account["accountId"])
+                  sleep(INSPECTOR_THROTTLE_PERIOD)
+              return admin_accounts
+          def get_org_delegated_admins(org_client, service_principal) -> list:
+              admin_accounts = []
+              next_token = ''
+              base_kwargs = { 'ServicePrincipal': service_principal }
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken':  next_token})
+                  response = org_client.list_delegated_administrators(**kwargs)
+                  for admin in response['DelegatedAdministrators']:
+                      admin_accounts.append(admin['Id'])
+                  next_token = response['NextToken'] if 'NextToken' in response else None
+              return admin_accounts
+          def deregister_org_delegated_admin() -> bool:
+              retry_attempts = 0
+              delay = DELAY_SECONDS
+              service_principal = "inspector2.amazonaws.com"
+              organizations = boto3.client("organizations")
+              while retry_attempts < MAX_RETRY_ATTEMPTS:
+                  try:
+                      delegated_administrators = get_org_delegated_admins(organizations, service_principal)
+                      for admin in delegated_administrators:
+                          organizations.deregister_delegated_administrator(AccountId=admin,ServicePrincipal=service_principal,)
+                      return True
+                  except organizations.exceptions.ClientError as error:
+                      if retry_attempts < MAX_RETRY_ATTEMPTS:
+                          retry_attempts += 1
+                          print(f"{str(error)}. Retrying in {delay} seconds...")
+                          sleep(delay)
+                          delay *= 2
+                          continue
+                      print(f"[ERROR] {str(error)}")
+                      return False
+              return False
+
+  EnableServiceAccess:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: organizations
+      ServiceToken: !GetAtt EnableServiceAccessLambda.Arn
+      KwArgs:
+        ServicePrincipal: "inspector2.amazonaws.com"
+
+  EnableManagementInspector2:
+    DependsOn: EnableServiceAccess
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt EnableManagementInspector2Lambda.Arn
+      KwArgs:
+        resourceTypes: !Ref ScanComponents
+
+  DelegateAdminAccount:
+    DependsOn: EnableManagementInspector2
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: inspector2
+      ServiceToken: !GetAtt DelegateAdminAccountLambda.Arn
+      KwArgs:
+        delegatedAdminAccountId: !Ref InspectorAdminAccountId
+
+Outputs:
+  AdminAccountId:
+    Description: ID of Inspector2 Admin Account
+    Value: !Ref InspectorAdminAccountId

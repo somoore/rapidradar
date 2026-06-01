@@ -1,0 +1,1083 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Enables SecurityHub for all accounts and regions in Organization
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - SecurityHubAdminAccountId
+          - HomeRegion
+          - DeploymentTargets
+          - ExcludeAccounts
+          - ActiveRegions
+          - ManagementAccountId
+          - AutomationAccountId
+      - Label:
+          default: SecurityHub Configuration
+        Parameters:
+          - EnableSecurityBestPracticesStandard
+          - SecurityBestPracticesStandardVersion
+          - EnableCISStandard
+          - CISStandardVersion
+          - EnablePCIStandard
+          - PCIStandardVersion
+          - EnableNISTStandard
+          - NISTStandardVersion
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      SecurityHubAdminAccountId:
+        default: ID of AWS Account delegated as admin for SecurityHub
+      HomeRegion:
+        default: Home AWS Region
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you're getting this solution deployed to
+      ExcludeAccounts:
+        default: Accounts you want to exclude from the deployment
+      ActiveRegions:
+        default: List of AWS regions where this solution is being deployed
+      ManagementAccountId:
+        default: Management Account ID
+      AutomationAccountId:
+        default: Automation Account ID
+      EnableSecurityBestPracticesStandard:
+        default: Enable AWS Foundational Security Best Practices Standard
+      SecurityBestPracticesStandardVersion:
+        default: Security Best Practices Standard Version
+      EnableCISStandard:
+        default: Enable CIS Standard
+      CISStandardVersion:
+        default: CIS Standard Version
+      EnablePCIStandard:
+        default: Enable PCI Standard
+      PCIStandardVersion:
+        default: PCI Standard Version
+      EnableNISTStandard:
+        default: Enable NIST Standard
+      NISTStandardVersion:
+        default: NIST Standard Version
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  SecurityHubAdminAccountId:
+    Type: String
+    Description: Account ID
+  HomeRegion:
+    Type: String
+    Description: AWS Region
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List
+  ActiveRegions:
+    Type: String
+    Description: Comma-Delimited List
+  ManagementAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  EnableSecurityBestPracticesStandard:
+    Type: String
+    Description: Indicates whether to enable the AWS Foundational Security Best Practices Standard.
+    AllowedValues:
+    - "true"
+    - "false"
+  SecurityBestPracticesStandardVersion:
+    Type: String
+    Description: SBP Standard Version
+    AllowedValues: [1.0.0]
+  EnableCISStandard:
+    Type: String
+    Description: Indicates whether to enable the CIS AWS Foundations Benchmark Standard.
+    AllowedValues:
+    - "true"
+    - "false"
+  CISStandardVersion:
+    Type: String
+    Description: CIS Standard Version
+    AllowedValues: [1.2.0, 1.4.0]
+  EnablePCIStandard:
+    Type: String
+    Description: Indicates whether to enable the Payment Card Industry Data Security Standard (PCI DSS).
+    AllowedValues:
+    - "true"
+    - "false"
+  PCIStandardVersion:
+    Type: String
+    Description: PCI Standard Version
+    AllowedValues: [3.2.1]
+  EnableNISTStandard:
+    Type: String
+    Description: Indicates whether to enable the National Institute of Standards and Technology (NIST) SP 800-53 Rev. 5.
+    AllowedValues:
+    - "true"
+    - "false"
+  NISTStandardVersion:
+    Type: String
+    Description: NIST Standard Version
+    AllowedValues: [5.0.0]
+
+Conditions:
+  SecurityHubAdminAccountIdEmpty: !Equals
+  - !Ref SecurityHubAdminAccountId
+  - ""
+  SecurityHubAdminAccountIdNotEmpty: !Not [ !Condition SecurityHubAdminAccountIdEmpty ]
+  IsHomeRegion: !Equals
+  - !Ref HomeRegion
+  - !Ref AWS::Region
+
+Resources:
+  SecurityHubEnablerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: "*"
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:ListAccounts"
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:DeregisterDelegatedAdministrator"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            - iam:DeleteServiceLinkedRole
+            Resource: '*'
+      - PolicyName: ConfigReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecurityHubAccess
+            Effect: Allow
+            Action:
+            - config:DescribeConfigurationRecorders
+            - config:DescribeConfigurationRecorderStatus
+            Resource: '*'
+      - PolicyName: SecurityHubReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecurityHubAccess
+            Effect: Allow
+            Action:
+            - securityhub:BatchEnableStandards
+            - securityhub:BatchDisableStandards
+            - securityhub:UpdateOrganizationConfiguration
+            - securityhub:UpdateSecurityHubConfiguration
+            - securityhub:GetEnabledStandards
+            - securityhub:CreateMembers
+            - securityhub:DeleteMembers
+            - securityhub:ListMembers
+            - securityhub:DisassociateMembers
+            - securityhub:CreateFindingAggregator
+            - securityhub:UpdateFindingAggregator
+            - securityhub:DeleteFindingAggregator
+            - securityhub:GetFindingAggregator
+            - securityhub:ListFindingAggregators
+            - securityhub:EnableSecurityHub
+            - securityhub:DisableSecurityHub
+            Resource: '*'
+
+  UpdateConfigurationLambda:
+    Condition: SecurityHubAdminAccountIdNotEmpty
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-securityhub-update-configuration"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 900
+      Role: !GetAtt SecurityHubEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:BOTO3_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          from os import getenv
+          import ast
+          import requests
+          import boto3
+          ACCOUNT_ID = getenv('ACCOUNT_ID')
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          AWS_DEFAULT_SBP_VERSION = "1.0.0"
+          AWS_DEFAULT_CIS_VERSION = "1.2.0"
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              if event_type in ['Create', 'Update']:
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      standard_dict = get_standard_dictionary(
+                          AWS_DEFAULT_SBP_VERSION,
+                          AWS_DEFAULT_CIS_VERSION,
+                          kwargs["PCIVersion"],
+                          kwargs["NISTVersion"],
+                      )
+                      for i in range(10):
+                          standards_subscriptions = get_enabled_standards(client)
+                          if all_standards_in_status(standards_subscriptions, "READY", client) and len(standards_subscriptions) != 0:
+                              break
+                          print(f"Waiting 20 seconds before checking if delegated admin default standards are in READY status. {i} of 10")
+                          sleep(20)
+                      batch_disable_standards_response = client.batch_disable_standards(
+                          StandardsSubscriptionArns=[standard_dict["sbp"]["subscription_arn"], standard_dict["cis"]["subscription_arn"]]
+                      )
+                      api_call_details = {"API_Call": "securityhub:BatchDisableStandards", "API_Response": batch_disable_standards_response}
+                      print(api_call_details)
+                      print(f"SecurityHub default standards disabled in {CURRENT_REGION}")
+
+                      update_organization_configuration_response = client.update_organization_configuration(AutoEnable=True, AutoEnableStandards="NONE")
+                      api_call_details = {"API_Call": "securityhub:UpdateOrganizationConfiguration", "API_Response": update_organization_configuration_response}
+                      print(api_call_details)
+                      print(f"SecurityHub organization configuration updated in {CURRENT_REGION}")
+
+                      update_security_hub_configuration_response = client.update_security_hub_configuration(AutoEnableControls=True)
+                      api_call_details = {"API_Call": "securityhub:UpdateSecurityHubConfiguration", "API_Response": update_security_hub_configuration_response}
+                      print(api_call_details)
+                      print(f"SecurityHub configuration updated in {CURRENT_REGION}")
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_standard_dictionary(sbp_version: str, cis_version: str, pci_version: str, nist_version: str) -> dict:
+              cis_standard_arn: str = f"arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/{cis_version}"
+              if cis_version != "1.2.0":
+                  cis_standard_arn = f"arn:aws:securityhub:{CURRENT_REGION}::standards/cis-aws-foundations-benchmark/v/{cis_version}"
+              return {
+                  "cis": {
+                      "name": "CIS AWS Foundations Benchmark Security Standard",
+                      "enabled": False,
+                      "standard_arn": cis_standard_arn,
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/cis-aws-foundations-benchmark/v/{cis_version}",
+                  },
+                  "pci": {
+                      "name": "Payment Card Industry Data Security Standard (PCI DSS)",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/pci-dss/v/{pci_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/pci-dss/v/{pci_version}",
+                  },
+                  "nist": {
+                      "name": "National Institute of Standards and Technology (NIST) SP 800-53 Rev. 5",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/nist-800-53/v/{nist_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/nist-800-53/v/{nist_version}",
+                  },
+                  "sbp": {
+                      "name": "AWS Foundational Security Best Practices Standard",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/aws-foundational-security-best-practices/v/{sbp_version}",
+                      "subscription_arn": (
+                          f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/aws-foundational-security-best-practices/v/{sbp_version}"
+                      ),
+                  },
+              }
+          def get_enabled_standards(securityhub_client) -> list:
+              standards_subscriptions = []
+              try:
+                  paginator = securityhub_client.get_paginator("get_enabled_standards")
+                  for page in paginator.paginate():
+                      for standards_subscription in page["StandardsSubscriptions"]:
+                          standards_subscriptions.append(standards_subscription)
+              except securityhub_client.exceptions.InvalidAccessException:
+                  print("Security Hub is not enabled.")
+              return standards_subscriptions
+          def all_standards_in_status(standards_subscriptions: list, standards_status: str, securityhub_client) -> bool:
+              for standards_subscription in standards_subscriptions:
+                  print("entered all_standards_in_status function...")
+                  print(f"standard - {standards_subscription} : {standards_subscription.get('StandardsStatus')}")
+                  incomplete_status_resolved = True
+                  if standards_subscription.get("StandardsStatus") == "INCOMPLETE":
+                      incomplete_status_resolved = disable_then_enable_standard(
+                          securityhub_client, standards_subscription.get("StandardsSubscriptionArn"), standards_subscription.get("StandardsArn")
+                      )
+                  if standards_subscription.get("StandardsStatus") != standards_status and standards_subscription.get("StandardsStatus") != "INCOMPLETE":
+                      return False
+                  if incomplete_status_resolved is False:
+                      return False
+              return True
+          def disable_then_enable_standard(securityhub_client, standards_subscription_arn: str, standards_arn: str) -> bool:
+              print("Entered disable_then_enable_standard function...")
+              print(f"...disabling {standards_subscription_arn} standard")
+              securityhub_client.batch_disable_standards(StandardsSubscriptionArns=[standards_subscription_arn])
+              sleep(5)
+              standard_enable_retry_sleep = 5
+              standard_enable_retry = 0
+              while standard_enable_retry < 30:
+                  try:
+                      print(f"...enabling {standards_subscription_arn} standard")
+                      securityhub_client.batch_enable_standards(StandardsSubscriptionRequests=[{
+                          "StandardsArn": standards_arn,
+                      }])
+                      return True
+                  except securityhub_client.exceptions.InvalidInputException as error:
+                      standard_enable_retry = standard_enable_retry + 1
+                      print(
+                          f"Retry {standard_enable_retry} due to InvalidInputException "
+                          + f"while enabling standard: {error.response['Error']['Code']} - {error.response['Error']['Message']}"
+                      )
+                      sleep(standard_enable_retry_sleep)
+              return False
+
+  CreateMembersLambda:
+    Condition: SecurityHubAdminAccountIdNotEmpty
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-securityhub-create-members"
+      Timeout: 300
+      Role: !GetAtt SecurityHubEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ACCOUNT_ID: !Ref AWS::AccountId
+          EXCLUDE_ACCOUNTS: !Ref ExcludeAccounts
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          IS_STANDALONE_ACCOUNT: !If [ SecurityHubAdminAccountIdEmpty, "true", "false" ]
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import ast
+          import requests
+          import boto3
+          from os import getenv
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          ACCOUNT_ID = getenv('ACCOUNT_ID')
+          EXCLUDE_ACCOUNTS = getenv('EXCLUDE_ACCOUNTS')
+          EXCLUDE_ACCOUNTS = EXCLUDE_ACCOUNTS.replace(' ','').split(',') if EXCLUDE_ACCOUNTS else []
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          ORG_THROTTLE_PERIOD = 0.2
+          SECURITY_HUB_THROTTLE_PERIOD = 0.2
+          MAX_RETRY = 5
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              if event_type in ['Create']:
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  method=getattr(client, 'create_members')
+                  try:
+                      print(f"...Creating memebers for inspector2 with account details: {accounts}")
+                      data = method(AccountDetails=accounts)
+                      print({"API_Call": "securityhub:CreateMembers", "API_Response": data})
+                      unprocess_accounts_waiter(data, method, accounts)
+                      print(f"Member accounts created: {len(accounts)}")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  method=getattr(client, 'create_members')
+                  try:
+                      member_account_ids = get_associated_members(client)
+                      if member_account_ids:
+                          disassociate_members_response = client.disassociate_members(AccountIds=member_account_ids)
+                          print({"API_Call": "securityhub:DisassociateMembers", "API_Response": disassociate_members_response})
+                          print("Member accounts disassociated!")
+                          delete_members_response = client.delete_members(AccountIds=member_account_ids)
+                          print({"API_Call": "securityhub:DeleteMembers", "API_Response": delete_members_response})
+                          print("Member accounts deleted!")
+                      print(f"...Creating memebers for inspector2 with account details: {accounts}")
+                      data = method(AccountDetails=accounts)
+                      print({"API_Call": "securityhub:CreateMembers", "API_Response": data})
+                      unprocess_accounts_waiter(data, method, accounts)
+                      print(f"Member accounts created: {len(accounts)}")
+                  except client.exceptions.ClientError as error:
+                      if error.response['Error']['Code'] == 'BadRequestException' and 'The request is rejected since no such resource found' in str(error):
+                          print(f"No account associated as a member")
+                      else:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  try:
+                      member_account_ids = get_associated_members(client)
+                      if member_account_ids:
+                          disassociate_members_response = client.disassociate_members(AccountIds=member_account_ids)
+                          print({"API_Call": "securityhub:DisassociateMembers", "API_Response": disassociate_members_response})
+                          print("Member accounts disassociated!")
+                          delete_members_response = client.delete_members(AccountIds=member_account_ids)
+                          print({"API_Call": "securityhub:DeleteMembers", "API_Response": delete_members_response})
+                          print("Member accounts deleted!")
+                  except client.exceptions.ClientError as error:
+                      if error.response['Error']['Code'] == 'BadRequestException' and 'The request is rejected since no such resource found' in str(error):
+                          print(f"No account associated as a member")
+                      else:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts and child['Id'] not in EXCLUDE_ACCOUNTS:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_active_organization_accounts(org_client, deployment_targets: list, exclude_account: list = None) -> list:
+              active_accounts = []
+              active_accounts_details = []
+              describe_method=getattr(org_client, 'describe_account')
+              try:
+                  if not IS_STANDALONE_ACCOUNT and exclude_account is not None:
+                      for target in deployment_targets:
+                          active_accounts.extend(get_children(org_client, 'ACCOUNT', target, exclude_account))
+                          active_accounts.extend(get_children(org_client, 'ORGANIZATIONAL_UNIT', target, exclude_account))
+                  else:
+                      active_accounts.append(ACCOUNT_ID)
+                  for account in active_accounts:
+                      response = describe_method(AccountId=account)
+                      if 'Account' in response:
+                          if response["Account"]["Status"] == "ACTIVE":
+                              account_record = {"AccountId": response["Account"]["Id"], "Email": response["Account"]["Email"]}
+                              active_accounts_details.append(account_record)
+                      sleep(ORG_THROTTLE_PERIOD)
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts_details
+          def get_unprocessed_account_details(create_members_response, accounts: list) -> list:
+              remaining_accounts = []
+              for unprocessed_account in create_members_response["UnprocessedAccounts"]:
+                  for account_record in accounts:
+                      if account_record["AccountId"] == unprocessed_account["AccountId"]:
+                          remaining_accounts.append(account_record)
+              return remaining_accounts
+          def unprocess_accounts_waiter(data, method, accounts):
+              if "UnprocessedAccounts" in data and data["UnprocessedAccounts"]:
+                  unprocessed = True
+                  retry_count = 0
+                  unprocessed_accounts = []
+                  while unprocessed:
+                      retry_count += 1
+                      print(f"Unprocessed Accounts: {data['UnprocessedAccounts']}")
+                      remaining_accounts = get_unprocessed_account_details(data, accounts)
+                      unprocessed = False
+                      if remaining_accounts:
+                          data = method(AccountDetails=remaining_accounts)
+                          print({"API_Call": "securityhub:CreateMembers", "API_Response": data})
+                          if "UnprocessedAccounts" in data and data["UnprocessedAccounts"]:
+                              unprocessed_accounts = data["UnprocessedAccounts"]
+                              if retry_count != MAX_RETRY:
+                                  unprocessed = True
+                                  print("Waiting 10 seconds before retrying create members with unprocessed accounts.")
+                                  sleep(10)
+                  if unprocessed_accounts:
+                      print(f"Unable to add the following accounts as members. {unprocessed_accounts}")
+          def get_associated_members(securityhub_client) -> list:
+              account_ids = []
+              try:
+                  paginator = securityhub_client.get_paginator("list_members")
+                  for page in paginator.paginate(OnlyAssociated=False):
+                      for member in page["Members"]:
+                          account_ids.append(member["AccountId"])
+                  sleep(SECURITY_HUB_THROTTLE_PERIOD)
+              except securityhub_client.exceptions.InternalException:
+                  print("No associated members")
+              except securityhub_client.exceptions.ClientError as error:
+                  if error.response["Error"]["Code"] != "BadRequestException":
+                      raise
+                  else:
+                      print("SecurityHub is not enabled")
+              return account_ids
+          def __assume_role():
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=SSO_CROSS_ACCOUNT_ROLE_ARN, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+
+  FindingAggregatorManagerLambda:
+    Condition: IsHomeRegion
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-securityhub-finding-aggreg-manager"
+      Timeout: 300
+      Role: !GetAtt SecurityHubEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          import ast
+          import requests
+          import boto3
+          from os import getenv
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              if event_type in ['Create', 'Update']:
+                  regions = kwargs['ActiveRegions'].replace(" ", "").split(",")
+                  regions_minus_home_region = regions.copy()
+                  regions_minus_home_region.remove(CURRENT_REGION)
+                  try:
+                      if regions_minus_home_region:
+                          finding_aggregator_arns: list = []
+                          paginator = client.get_paginator("list_finding_aggregators")
+                          try:
+                              for page in paginator.paginate():
+                                  for finding_aggregator in page["FindingAggregators"]:
+                                      finding_aggregator_arns.append(finding_aggregator["FindingAggregatorArn"])
+                          except client.exceptions.InternalException:
+                              print("No existing finding aggregator")
+                          region_linking_mode = "SPECIFIED_REGIONS"
+                          if finding_aggregator_arns:
+                              print("...Updating finding aggregator")
+                              update_finding_aggregator(client, region_linking_mode, regions_minus_home_region, finding_aggregator_arns)
+                          else:
+                              print("...Creating finding aggregator")
+                              response = client.create_finding_aggregator(RegionLinkingMode=region_linking_mode, Regions=regions_minus_home_region)
+                              api_call_details = {"API_Call": "securityhub:CreateFindingAggregator", "API_Response": response}
+                              print(api_call_details)
+                      else:
+                          print("Region aggregator not created due to only one governed region.")
+                  except Exception as error:
+                      status = 'FAILED'
+                      reason = str(error)
+                      data = {}
+              elif event_type in ['Delete']:
+                  finding_aggregator_arns: list = []
+                  try:
+                      paginator = client.get_paginator("list_finding_aggregators")
+                      for page in paginator.paginate():
+                          for finding_aggregator in page["FindingAggregators"]:
+                              finding_aggregator_arns.append(finding_aggregator["FindingAggregatorArn"])
+                  except client.exceptions.InternalException:
+                      print("No existing finding aggregator")
+                  except client.exceptions.InvalidAccessException:
+                      print("This account is not subscribed to AWS Security Hub")
+                  for finding_aggregator_arn in finding_aggregator_arns:
+                      try:
+                          response = client.delete_finding_aggregator(FindingAggregatorArn=finding_aggregator_arn)
+                          api_call_details = {"API_Call": "securityhub:DeleteFindingAggregator", "API_Response": response}
+                          print(api_call_details)
+                      except client.exceptions.InvalidAccessException:
+                          print("This account is not subscribed to AWS Security Hub")
+                      except Exception as error:
+                          status = 'FAILED'
+                          reason = str(error)
+                          data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def update_finding_aggregator(securityhub_client, region_linking_mode: str, regions: list, finding_aggregator_arns: list) -> None:
+              for finding_aggregator_arn in finding_aggregator_arns:
+                  response = securityhub_client.get_finding_aggregator(FindingAggregatorArn=finding_aggregator_arn)
+                  api_call_details = {"API_Call": "securityhub:GetFindingAggregator", "API_Response": response}
+                  print(api_call_details)
+                  if response["RegionLinkingMode"] != region_linking_mode or not compare_lists(regions, response["Regions"]):
+                      print(f"Update finding aggregator: {finding_aggregator_arn}")
+                      if region_linking_mode != "ALL_REGIONS":
+                          securityhub_client.update_finding_aggregator(
+                              FindingAggregatorArn=finding_aggregator_arn, RegionLinkingMode=region_linking_mode, Regions=regions
+                          )
+                          api_call_details = {"API_Call": "securityhub:UpdateFindingAggregator", "API_Response": response}
+                          print(api_call_details)
+                      else:
+                          securityhub_client.update_finding_aggregator(FindingAggregatorArn=finding_aggregator_arn, RegionLinkingMode=region_linking_mode)
+                          api_call_details = {"API_Call": "securityhub:UpdateFindingAggregator", "API_Response": response}
+                          print(api_call_details)
+          def compare_lists(list1: list, list2: list) -> bool:
+              if len(list1) != len(list2):
+                  return False
+              if set(list1) == set(list2):
+                  return True
+              return False
+
+  EnableSecurityHubLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-securityhub-enabler"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt SecurityHubEnablerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          ADMIN_ACCOUNT_ID: !Ref SecurityHubAdminAccountId
+          ACCOUNT_ID: !Ref AWS::AccountId
+          CURRENT_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          import json
+          from os import getenv
+          from time import sleep
+          import ast
+          import requests
+          import boto3
+          ADMIN_ACCOUNT_ID = str(getenv('ADMIN_ACCOUNT_ID'))
+          ACCOUNT_ID = str(getenv('ACCOUNT_ID'))
+          CURRENT_REGION = getenv('CURRENT_REGION')
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              config_client=boto3.client("config")
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'enable_security_hub')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      standard_dict: dict = get_standard_dictionary(
+                          kwargs["SecurityBestPracticesVersion"],
+                          kwargs["CISVersion"],
+                          kwargs["PCIVersion"],
+                          kwargs["NISTVersion"]
+                      )
+                      try:
+                          print("Enabling SecurityHub...")
+                          data = method(EnableDefaultStandards=False)
+                      except client.exceptions.ResourceConflictException:
+                          print(f"SecurityHub already enabled in {ACCOUNT_ID} {CURRENT_REGION}")
+                      print("Checking if Config is enabled...")
+                      if is_config_enabled(config_client):
+                          process_standards(client, standard_dict, kwargs["StandardsToEnable"])
+                      print("Waiting 20 seconds before exiting..")
+                      sleep(20)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_security_hub')
+                  try:
+                      data = method()
+                      api_call_details = {"API_Call": "securityhub:DisableSecurityHub", "API_Response": data}
+                      print(api_call_details)
+                      print(f"SecurityHub disabled in {CURRENT_REGION}")
+                  except client.exceptions.ResourceNotFoundException:
+                      print(f"SecurityHub is not enabled in {CURRENT_REGION}")
+                  except client.exceptions.ClientError as error:
+                      if error.response['Error']['Code'] == 'InvalidInputException' and 'Cannot disable Security Hub on the Security Hub administrator' in str(error):
+                          print(f"cannot disable securityhub on administrator")
+                      else:
+                          status = 'FAILED'
+                          reason = str(e)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def is_config_enabled(config_client) -> bool:
+              if len(config_client.describe_configuration_recorders()["ConfigurationRecorders"]) > 0 and config_client.describe_configuration_recorder_status()["ConfigurationRecordersStatus"][0]["recording"]:
+                  return True
+              return False
+          def get_standard_dictionary(sbp_version: str, cis_version: str, pci_version: str, nist_version: str) -> dict:
+              cis_standard_arn: str = f"arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/{cis_version}"
+              if cis_version != "1.2.0":
+                  cis_standard_arn = f"arn:aws:securityhub:{CURRENT_REGION}::standards/cis-aws-foundations-benchmark/v/{cis_version}"
+              return {
+                  "cis": {
+                      "name": "CIS AWS Foundations Benchmark Security Standard",
+                      "enabled": False,
+                      "standard_arn": cis_standard_arn,
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/cis-aws-foundations-benchmark/v/{cis_version}",
+                  },
+                  "pci": {
+                      "name": "Payment Card Industry Data Security Standard (PCI DSS)",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/pci-dss/v/{pci_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/pci-dss/v/{pci_version}",
+                  },
+                  "nist": {
+                      "name": "National Institute of Standards and Technology (NIST) SP 800-53 Rev. 5",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/nist-800-53/v/{nist_version}",
+                      "subscription_arn": f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/nist-800-53/v/{nist_version}",
+                  },
+                  "sbp": {
+                      "name": "AWS Foundational Security Best Practices Standard",
+                      "enabled": False,
+                      "standard_arn": f"arn:aws:securityhub:{CURRENT_REGION}::standards/aws-foundational-security-best-practices/v/{sbp_version}",
+                      "subscription_arn": (
+                          f"arn:aws:securityhub:{CURRENT_REGION}:{ACCOUNT_ID}:subscription/aws-foundational-security-best-practices/v/{sbp_version}"
+                      ),
+                  },
+              }
+          def process_standards(securityhub_client, standard_dict: dict, standards_to_enable: dict) -> None:
+              formatted_standards_to_enable = {}
+              for key, value in standards_to_enable.items():
+                  if value.lower() == 'true':
+                      formatted_standards_to_enable[key] = True
+                  elif value.lower() == 'false':
+                      formatted_standards_to_enable[key] = False
+              standard_dict = get_current_enabled_standards(securityhub_client, standard_dict)
+              for standard, status in standard_dict.items():
+                  process_standard(securityhub_client, formatted_standards_to_enable, status, standard)
+          def get_current_enabled_standards(securityhub_client, standard_dict: dict) -> dict:
+              standards_subscriptions = get_enabled_standards(securityhub_client)
+              if all_standards_in_status(standards_subscriptions, "READY", securityhub_client):
+                  for item in standards_subscriptions:
+                      if standard_dict["sbp"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["sbp"]["enabled"] = True
+                      if standard_dict["cis"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["cis"]["enabled"] = True
+                      if standard_dict["pci"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["pci"]["enabled"] = True
+                      if standard_dict["nist"]["standard_arn"] == item["StandardsArn"]:
+                          standard_dict["nist"]["enabled"] = True
+              return standard_dict
+          def get_enabled_standards(securityhub_client) -> list:
+              standards_subscriptions = []
+              try:
+                  paginator = securityhub_client.get_paginator("get_enabled_standards")
+                  for page in paginator.paginate():
+                      for standards_subscription in page["StandardsSubscriptions"]:
+                          standards_subscriptions.append(standards_subscription)
+              except securityhub_client.exceptions.InvalidAccessException:
+                  print("Security Hub is not enabled.")
+              return standards_subscriptions
+          def all_standards_in_status(standards_subscriptions: list, standards_status: str, securityhub_client) -> bool:
+              for standards_subscription in standards_subscriptions:
+                  print("entered all_standards_in_status function...")
+                  print(f"standard - {standards_subscription} : {standards_subscription.get('StandardsStatus')}")
+                  incomplete_status_resolved = True
+                  if standards_subscription.get("StandardsStatus") == "INCOMPLETE":
+                      incomplete_status_resolved = disable_then_enable_standard(
+                          securityhub_client, standards_subscription.get("StandardsSubscriptionArn"), standards_subscription.get("StandardsArn")
+                      )
+                  if standards_subscription.get("StandardsStatus") != standards_status and standards_subscription.get("StandardsStatus") != "INCOMPLETE":
+                      return False
+                  if incomplete_status_resolved is False:
+                      return False
+              return True
+          def disable_then_enable_standard(securityhub_client, standards_subscription_arn: str, standards_arn: str) -> bool:
+              print("Entered disable_then_enable_standard function...")
+              print(f"...disabling {standards_subscription_arn} standard")
+              securityhub_client.batch_disable_standards(StandardsSubscriptionArns=[standards_subscription_arn])
+              sleep(5)
+              standard_enable_retry_sleep = 5
+              standard_enable_retry = 0
+              while standard_enable_retry < 10:
+                  try:
+                      print(f"...enabling {standards_subscription_arn} standard")
+                      securityhub_client.batch_enable_standards(StandardsSubscriptionRequests=[{
+                          "StandardsArn": standards_arn,
+                      }])
+                      return True
+                  except securityhub_client.exceptions.InvalidInputException as error:
+                      standard_enable_retry = standard_enable_retry + 1
+                      print(
+                          f"Retry {standard_enable_retry} due to InvalidInputException "
+                          + f"while enabling standard: {error.response['Error']['Code']} - {error.response['Error']['Message']}"
+                      )
+                      sleep(standard_enable_retry_sleep)
+              return False
+          def all_standards_ready(securityhub_client) -> bool:
+              for i in range(10):
+                  standards_subscriptions = get_enabled_standards(securityhub_client)
+                  if all_standards_in_status(standards_subscriptions, "READY", securityhub_client):
+                      return True
+                  print(f"Waiting 20 seconds before checking if standards are in READY status. {i} of 10")
+                  sleep(20)
+              return False
+          def process_standard(securityhub_client, standards_to_enable: dict, standard_definition: dict, standard_short_name: str) -> bool:
+              if all_standards_ready(securityhub_client):
+                  try:
+                      if standards_to_enable[standard_short_name]:
+                          if not standard_definition["enabled"]:
+                              response = securityhub_client.batch_enable_standards(
+                                  StandardsSubscriptionRequests=[{"StandardsArn": standard_definition["standard_arn"]}]
+                              )
+                              api_call_details = {"API_Call": "securityhub:BatchEnableStandards", "API_Response": response}
+                              print(api_call_details)
+                              print(f"Enabled {standard_definition['name']}")
+                          else:
+                              print(f"{standard_definition['name']} is already enabled")
+                      else:
+                          if standard_definition["enabled"]:
+                              print(f"Disabling {standard_definition['name']} in Account")
+                              response = securityhub_client.batch_disable_standards(StandardsSubscriptionArns=[standard_definition["subscription_arn"]])
+                              api_call_details = {"API_Call": "securityhub:BatchDisableStandards", "API_Response": response}
+                              print(api_call_details)
+                              print(f"Disabled {standard_definition['name']} in Account")
+                          else:
+                              print(f"{standard_definition['name']} is already disabled")
+                  except securityhub_client.exceptions.InvalidInputException:
+                      print("InvalidInputException while enabling or disabling standard")
+              return True
+
+  UpdateConfiguration:
+    Condition: SecurityHubAdminAccountIdNotEmpty
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt UpdateConfigurationLambda.Arn
+      KwArgs:
+        PCIVersion: !Ref PCIStandardVersion
+        NISTVersion: !Ref NISTStandardVersion
+
+  CreateMembers:
+    Condition: SecurityHubAdminAccountIdNotEmpty
+    DependsOn: UpdateConfiguration
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt CreateMembersLambda.Arn
+      KwArgs:
+        ExcludeAccount: !If [SecurityHubAdminAccountIdEmpty, !Ref AWS::NoValue, !Ref AWS::AccountId]
+        DeploymentTargets: !Ref DeploymentTargets
+
+  EnableSecurityHub:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt EnableSecurityHubLambda.Arn
+      KwArgs:
+        SecurityBestPracticesVersion: !Ref SecurityBestPracticesStandardVersion
+        CISVersion: !Ref CISStandardVersion
+        PCIVersion: !Ref PCIStandardVersion
+        NISTVersion: !Ref NISTStandardVersion
+        StandardsToEnable:
+          sbp: !Ref EnableSecurityBestPracticesStandard
+          cis: !Ref EnableCISStandard
+          pci: !Ref EnablePCIStandard
+          nist: !Ref EnableNISTStandard
+
+  FindingAggregatorManager:
+    Condition: IsHomeRegion
+    DependsOn: EnableSecurityHub
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: securityhub
+      ServiceToken: !GetAtt FindingAggregatorManagerLambda.Arn
+      KwArgs:
+        ActiveRegions: !Ref ActiveRegions

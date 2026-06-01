@@ -1,0 +1,30 @@
+# Security Groups for EC2 Instances
+EC2SecurityGroupIngressRemoteAccessPorts: "tcp=22,tcp=3389"
+EC2SecurityGroupIngressTrafficPorts: "udp=7233,tcp=80"
+EC2SecurityGroupIngressIgnorePorts: "tcp=443"
+
+# Security Groups for LoadBalancers
+LoadBalancerSecurityGroupIngressRemoteAccessPorts: ""
+LoadBalancerSecurityGroupIngressTrafficPorts: "tcp=8080"
+LoadBalancerSecurityGroupIngressIgnorePorts: ""
+
+# Elastic IP Association
+EIPAssociationOverrideTagKeyBase64: "override-tag"
+
+# EC2 Instances
+EC2InstanceIAMRoleDetectionBypassTagKey: "skip-instance-role-detection"
+DisableFindingEC2LaunchWithoutIMDSv2: false
+DisableFindingEC2LaunchWithPublicIP: false
+
+# EBS Volumes
+DisableFindingUnencryptedEBSVolume: false
+
+# IAM Secret Access Keys
+DisbleIAMSecretAccessKeyExpiryReminders: false
+IAMSecretAccessKeyExpiryInDays: 90
+
+# Unused Resources Detection
+UnusedResourcesDetectionBypassTagKey: "skip-unused-resource-detection"
+DisableDetectionStoppedEC2Instances: false
+DisableDetectionUnusedSecurityGroups: false
+DisableDetectionUnusedEBSVolumes: false

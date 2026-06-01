@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates ECS resources for Slack's Socket mode
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - VpcId
+          - PrivateSubnets
+          - ECRImageURI
+          - SlackBotConfigSecretName
+          - SlackActionsCrossAccountRole
+          - DeploymentTargets
+          - ExcludeAccounts
+          - ManagementAccountId
+          - HomeRegion
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      VpcId:
+        default: VPC ID
+      PrivateSubnets:
+        default: List of Private Subnets IDs
+      ECRImageURI:
+        default: ECR Image URI for Slack App to run in socket mode
+      SlackBotConfigSecretName:
+        default: Name of SecretsManager Secret containing Configuration for Slack Bot
+      SlackActionsCrossAccountRole:
+        default: Cross Account Role Name for taking Slack Actions
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you're getting this solution deployed to
+      ExcludeAccounts:
+        default: Accounts you want to exclude from the deployment
+      ManagementAccountId:
+        default: Management Account ID
+      HomeRegion:
+        default: Home AWS Region
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  VpcId:
+    Type: String
+    Description: ID of VPC where to create AWS batch resources
+  PrivateSubnets:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of IDs of Private Subnets
+  ECRImageURI:
+    Type: String
+    Description: ECR Image URI of image to run Slack App in socket mode
+  SlackBotConfigSecretName:
+    Type: String
+    Description: Contains the Slack bot OAuth token and channel ID for sending alerts and managing responses
+  SlackActionsCrossAccountRole:
+    Type: String
+    Description: Name of SlackActionsCrossAccountRole in child account to be assumed by lambda Function.
+    Default: <ProjectName>-slack-cross-account-role
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List
+  ManagementAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  HomeRegion:
+    Type: String
+    Description: AWS Region
+Resources:
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-slack-ecs-task-role"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: SecretsReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecretsAccess
+            Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*"
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action:
+            - sts:AssumeRole
+            Resource: "*"
+  SlackAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for Slack Socket Mode app running on Fargate. Denies inbound traffic; allows outbound HTTPS and DNS traffic."
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+  SlackAppCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}-slack-app"
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${SlackAppCluster}"
+  SlackAppTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-slack-task"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: slack
+          Image: !Ref ECRImageURI
+          PortMappings:
+            - ContainerPort: 443
+              Protocol: tcp
+          Environment:
+          - Name: PROJECT_NAME
+            Value: !Ref ProjectName
+          - Name: CROSS_ACCOUNT_ROLE
+            Value: !Ref SlackActionsCrossAccountRole
+          - Name: EXPECTED_PERMISSIONS_BOUNDARY
+            Value: !Sub "${ProjectName}-slack-cross-account-pb"
+          - Name: SSO_CROSS_ACCOUNT_ROLE_ARN
+            Value: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          - Name: MANAGEMENT_ACCOUNT_ID
+            Value: !Ref ManagementAccountId
+          - Name: HOME_REGION
+            Value: !Ref HomeRegion
+          - Name: DEPLOYMENT_TARGETS
+            Value: !Ref DeploymentTargets
+          - Name: EXCLUDE_ACCOUNTS
+            Value: !Ref ExcludeAccounts
+          - Name: SLACK_BOT_CONFIG_SECRET_NAME
+            Value: !Ref SlackBotConfigSecretName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: slack
+  SlackService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref SlackAppCluster
+      ServiceName: !Sub "${ProjectName}-slack-service"
+      TaskDefinition: !Ref SlackAppTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref PrivateSubnets
+          SecurityGroups:
+            - !GetAtt SlackAppSecurityGroup.GroupId
+          AssignPublicIp: ENABLED

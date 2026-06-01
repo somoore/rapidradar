@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates S3 Buckets
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+      - Label:
+          default: User Offboarding Workflow Project
+        Parameters:
+          - AddSupportforUserOffboardingWorkflow
+      - Label:
+          default: IP Tracker Project
+        Parameters:
+          - AddSupportforIPTracker
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      AddSupportforUserOffboardingWorkflow:
+        default: Deploy User Offboarding Workflow Project?
+      AddSupportforIPTracker:
+        default: Deploy IP Tracker Project?
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  AddSupportforUserOffboardingWorkflow:
+    Type: String
+    Description: Set to True if you want User Offboarding Workflow Project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIPTracker:
+    Type: String
+    Description: Set to True if you want IP Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+
+Conditions:
+  DeployUserOffboardingWorkflowProject: !Equals
+  - !Ref AddSupportforUserOffboardingWorkflow
+  - true
+  DeployIPTrackerProject: !Equals
+  - !Ref AddSupportforIPTracker
+  - true
+
+Resources:
+  SSOUserManagerArtifactsBucket:
+    Condition: DeployUserOffboardingWorkflowProject
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ProjectName}-${AWS::AccountId}-sso-user-manager-artifacts
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+
+  SSOUsersIpDataBucket:
+    Condition: DeployIPTrackerProject
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ProjectName}-${AWS::AccountId}-sso-users-ip-data
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+
+Outputs:
+  SSOUserManagerArtifactsBucketName:
+    Condition: DeployUserOffboardingWorkflowProject
+    Description: Name of SSOUserManagerArtifacts Bucket
+    Value: !Ref SSOUserManagerArtifactsBucket
+  SSOUserManagerArtifactsBucketARN:
+    Condition: DeployUserOffboardingWorkflowProject
+    Description: ARN of SSOUserManagerArtifacts Bucket
+    Value: !GetAtt SSOUserManagerArtifactsBucket.Arn
+  SSOUsersIpDataBucketName:
+    Condition: DeployIPTrackerProject
+    Description: Name of SSOUsersIpData Bucket
+    Value: !Ref SSOUsersIpDataBucket
+  SSOUsersIpDataBucketARN:
+    Condition: DeployIPTrackerProject
+    Description: ARN of SSOUsersIpData Bucket
+    Value: !GetAtt SSOUsersIpDataBucket.Arn

@@ -1,0 +1,1421 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Enables GuardDuty for all accounts and regions in Organization
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - GuardDutyAdminAccountId
+          - DeploymentTargets
+          - ExcludeAccounts
+          - ManagementAccountId
+          - AutomationAccountId
+          - LogArchiveAccountId
+          - HomeRegion
+          - AutomationEventBusName
+          - FindingPublishingFrequency
+          - GuardDutyDeliveryBucketPrefix
+          - IsCentralLoggingBucket
+      - Label:
+          default: GuardDuty Configuration
+        Parameters:
+          - GuardDutySeverityLevels
+          - AutoEnableS3Logs
+          - EnableEKSAuditLogs
+          - AutoEnableMalwareProtection
+          - EnableRDSLoginEvents
+          - EnableEKSRuntimeMonitoring
+          - EnableEKSAddonManagement
+          - EnableLambdaNetworkLogs
+          - EnableEcsFargateAgentManagement
+          - EnableEc2AgentManagement
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      GuardDutyAdminAccountId:
+        default: ID of AWS Account delegated as Admin for GuardDuty
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you're getting this solution deployed to
+      ExcludeAccounts:
+        default: Accounts you want to exclude from the deployment
+      ManagementAccountId:
+        default: Management Account ID
+      AutomationAccountId:
+        default: Automation Account ID
+      LogArchiveAccountId:
+        default: Log Archive account ID (Skip if its a Standalone Deployment)
+      HomeRegion:
+        default: Home AWS Region
+      AutomationEventBusName:
+        default: Event Bus Name in Automation Account
+      FindingPublishingFrequency:
+        default: Finding Publishing Frequency
+      GuardDutyDeliveryBucketPrefix:
+        default: Delivery Bucket Prefix
+      IsCentralLoggingBucket:
+        default: Is it a central Logging Bucket?
+      GuardDutySeverityLevels:
+        default: Specify the severity levels of GuardDuty findings to be processed
+      AutoEnableS3Logs:
+        default: Auto Enable S3 Logs
+      EnableEKSAuditLogs:
+        default: Auto Enable Kubernetes Audit Logs
+      AutoEnableMalwareProtection:
+        default: Auto Enable Malware Protection
+      EnableRDSLoginEvents:
+        default: Auto enable RDS Login Events
+      EnableEKSRuntimeMonitoring:
+        default: Auto enable Runtime Monitoring for Kubernetes
+      EnableEKSAddonManagement:
+        default: Auto enable EKS Add-on Management
+      EnableLambdaNetworkLogs:
+        default: Auto enable Lambda Network Logs
+      EnableEcsFargateAgentManagement:
+        default: Auto enable ECS Fargate Agent Management
+      EnableEc2AgentManagement:
+        default: Auto enable EC2 Agent Management
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  GuardDutyAdminAccountId:
+    Type: String
+    Description: Account ID
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List
+  ManagementAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  LogArchiveAccountId:
+    Type: String
+    Description: AWS Account ID of the Control Tower Log Archive account.
+  HomeRegion:
+    Type: String
+    Description: AWS Region
+  AutomationEventBusName:
+    Description: Name of the Event Bus in the Automation account to which events are sent (see Automation Stack outputs)
+    Type: String
+    Default: <ProjectName>-eventbus
+  FindingPublishingFrequency:
+    AllowedValues: [FIFTEEN_MINUTES, ONE_HOUR, SIX_HOURS]
+    Description: Finding publishing frequency
+    Type: String
+  GuardDutyDeliveryBucketPrefix:
+    Type: String
+    Description: Publishing Destination Bucket Prefix for GuardDuty
+  IsCentralLoggingBucket:
+    Type: String
+    Description: Set to true if its a central logging bucket
+    AllowedValues:
+    - true
+    - false
+  GuardDutySeverityLevels:
+    Type: List<String>
+    Description: Comma-Separated list of severity levels (e.g., 'HIGH,MEDIUM')
+    AllowedValues: [HIGH, MEDIUM, LOW, ALL]
+    ConstraintDescription: "Must be one or more of the following values: ALL, HIGH, MEDIUM, LOW."
+  AutoEnableS3Logs:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for S3 logs
+  EnableEKSAuditLogs:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for EKS Audit logs
+  AutoEnableMalwareProtection:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for malware protection
+  EnableRDSLoginEvents:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for RDS login events
+  EnableEKSRuntimeMonitoring:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to monitor runtime activity to detect threats to your compute workloads on EKS
+  EnableEKSAddonManagement:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for EKS addons management
+  EnableLambdaNetworkLogs:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for Lambda network logs
+  EnableEcsFargateAgentManagement:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for ECS Fargate Agent Management
+  EnableEc2AgentManagement:
+    Type: String
+    AllowedValues:
+    - "true"
+    - "false"
+    Description: Set to True if you want to auto-enable guardduty for EC2 Agent Management
+
+Conditions:
+  LogArchiveAccountIdEmpty: !Equals
+  - !Ref LogArchiveAccountId
+  - ""
+  CentralLoggingBucket: !Equals
+  - !Ref IsCentralLoggingBucket
+  - true
+  GuardDutyAdminAccountIdEmpty: !Equals
+  - !Ref GuardDutyAdminAccountId
+  - ""
+  GuardDutyAdminAccountIdNotEmpty: !Not [ !Condition GuardDutyAdminAccountIdEmpty ]
+
+Resources:
+  GuardDutyConfiguratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudWatchLogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudWatchAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - "organizations:EnableAWSServiceAccess"
+            - "organizations:RegisterDelegatedAdministrator"
+            - "organizations:ListAccounts"
+            - "organizations:ListDelegatedAdministrators"
+            - "organizations:ListAWSServiceAccessForOrganization"
+            - "organizations:DescribeOrganizationalUnit"
+            - "organizations:DescribeAccount"
+            - "organizations:DescribeOrganization"
+            - "organizations:DisableAWSServiceAccess"
+            Resource: "*"
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: "*"
+      - PolicyName: GuardDutyReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Sid: GuardDutyReadAccess
+              Effect: Allow
+              Action: guardduty:ListDetectors
+              Resource: '*'
+            - Sid: GuardDutyReadWrite
+              Effect: Allow
+              Action:
+                - guardduty:CreateMembers
+                - guardduty:CreatePublishingDestination
+                - guardduty:CreateDetector
+                - guardduty:DeleteDetector
+                - guardduty:DeleteMembers
+                - guardduty:DisassociateMembers
+                - guardduty:ListMembers
+                - guardduty:ListPublishingDestinations
+                - guardduty:UpdateDetector
+                - guardduty:UpdateMemberDetectors
+                - guardduty:UpdateOrganizationConfiguration
+                - guardduty:UpdatePublishingDestination
+              Resource:
+                - !Sub arn:aws:guardduty:*:${AWS::AccountId}:/detector/*
+                - !Sub arn:aws:guardduty:*:${AWS::AccountId}:detector/*
+      - PolicyName: SecretsReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecretsAccess
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !Sub "arn:aws:secretsmanager:*:${AWS::AccountId}:secret:/${ProjectName}/DELIVERY_KEY_ARN-*"
+      - PolicyName: KMSDecryptPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: KMSAccess
+            Effect: Allow
+            Action: kms:Decrypt
+            Resource: '*'
+      - PolicyName: IAMReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Sid: IAMReadAccess
+              Effect: Allow
+              Action: iam:GetRole
+              Resource:
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/malware-protection.guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDutyMalwareProtection
+            - Sid: IAMWriteServiceLinkedRoleAccess
+              Effect: Allow
+              Action:
+                - iam:CreateServiceLinkedRole
+                - iam:DeleteServiceLinkedRole
+              Condition:
+                StringLike:
+                  iam:AWSServiceName:
+                    - guardduty.amazonaws.com
+                    - malware-protection.guardduty.amazonaws.com
+              Resource:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/malware-protection.guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDutyMalwareProtection
+            - Sid: IAMWriteAccess
+              Effect: Allow
+              Action:
+                - iam:DeleteRolePolicy
+                - iam:PutRolePolicy
+              Resource:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/malware-protection.guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDutyMalwareProtection
+
+  CreateDetectorLambda:
+    Condition: GuardDutyAdminAccountIdEmpty
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-detector-creator"
+      Timeout: 600
+      Role: !GetAtt GuardDutyConfiguratorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import json
+          import requests
+          import boto3
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = ''
+              if event_type in ['Create']:
+                  method=getattr(client, 'create_detector')
+                  try:
+                      detector_ids = check_for_detector(client)
+                      print(f"Detectors Exist?: {True if detector_ids else False} No. of Detectors: {len(detector_ids)}")
+                      if not detector_ids:
+                          data = method(Enable=True)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def check_for_detector(guardduty_client) -> bool:
+              detector_ids = []
+              next_token, base_kwargs = '', {}
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = guardduty_client.list_detectors(**kwargs)
+                      if response['DetectorIds']:
+                          detector_ids.extend(response['DetectorIds'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except guardduty_client.exceptions.ClientError as error:
+                  if error.response["Error"]["Code"] == "AccessDeniedException":
+                      print(f"Detector not found")
+              return detector_ids
+
+  GetDetectorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-get-detector"
+      Timeout: 600
+      Role: !GetAtt GuardDutyConfiguratorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import requests
+          import boto3
+          MAX_RUN_COUNT = 30
+          SLEEP_SECONDS = 10
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              detector_id = ''
+              if event_type in ['Create', 'Update']:
+                  try:
+                      detector_ids = []
+                      run_count = 0
+                      while not detector_ids and run_count < MAX_RUN_COUNT:
+                          run_count += 1
+                          detector_ids = check_for_detector(client)
+                          print(f"Detectors Exist?: {True if detector_ids else False} Count: {run_count}")
+                          if not detector_ids:
+                              sleep(SLEEP_SECONDS)
+                      if not detector_ids:
+                          raise ValueError("GuardDuty Detectors did not get created in the allowed time. Check the Org Management delegated admin setup.")
+                      detector_id = detector_ids[0]
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  try:
+                      detector_ids = check_for_detector(client)
+                      for detector_id in detector_ids:
+                          account_ids = get_associated_members(client, detector_id)
+                          print(f"Account IDs: {account_ids}")
+                          if account_ids:
+                              client.disassociate_members(DetectorId=detector_id, AccountIds=account_ids)
+                              print(f"GuardDuty accounts disassociated")
+                              client.delete_members(DetectorId=detector_id, AccountIds=account_ids)
+                              print(f"GuardDuty members deleted")
+                          print(f"Waiting for {SLEEP_SECONDS} before deleting detector...")
+                          sleep(SLEEP_SECONDS)
+                          try:
+                              client.delete_detector(DetectorId=detector_id)
+                          except Exception as error:
+                              print(str(error))
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {'Id': detector_id}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def check_for_detector(guardduty_client) -> bool:
+              detector_ids = []
+              next_token, base_kwargs = '', {}
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = guardduty_client.list_detectors(**kwargs)
+                      if response['DetectorIds']:
+                          detector_ids.extend(response['DetectorIds'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except guardduty_client.exceptions.ClientError as error:
+                  if error.response["Error"]["Code"] == "AccessDeniedException":
+                      print(f"Detector not found")
+              return detector_ids
+          def get_associated_members(guardduty_client, detector_id: str) -> list:
+              account_ids = []
+              paginator = guardduty_client.get_paginator("list_members")
+              for page in paginator.paginate(DetectorId=detector_id, OnlyAssociated="false", PaginationConfig={"PageSize": 20}):
+                  for member in page["Members"]:
+                      account_ids.append(member["AccountId"])
+              return account_ids
+
+  CreatePublishingDestinationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-create-publishing-destinations"
+      Timeout: 300
+      Role: !GetAtt GuardDutyConfiguratorLambdaRole.Arn
+      Environment:
+        Variables:
+          KMS_KEY_REGION: !If [ CentralLoggingBucket, !Ref HomeRegion, !Ref AWS::Region ]
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: !Sub |
+          import json
+          import requests
+          import boto3
+          from os import getenv
+          KMS_KEY_REGION = getenv('KMS_KEY_REGION')
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def get_kms_key_arn(secret_id):
+              client = boto3.client(service_name='secretsmanager', region_name=KMS_KEY_REGION)
+              key_arn = ''
+              try:
+                  response = client.get_secret_value(SecretId=secret_id)
+                  key_arn = json.loads(response['SecretString'])['GuardDutyDeliveryKeyArn']
+              except Exception as error:
+                  raise error
+              return key_arn
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              if event_type in ['Create', 'Update']:
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = str(value)
+                  try:
+                      kms_key_arn = get_kms_key_arn('/${ProjectName}/DELIVERY_KEY_ARN')
+                      destinations = client.list_publishing_destinations(DetectorId=kwargs['DetectorId'])
+                      if "Destinations" in destinations and len(destinations["Destinations"]) == 1:
+                          destination_id = destinations["Destinations"][0]["DestinationId"]
+                          data = client.update_publishing_destination(
+                              DetectorId=kwargs['DetectorId'],
+                              DestinationId=destination_id,
+                              DestinationProperties={
+                                  "DestinationArn": kwargs['DestinationArn'],
+                                  "KmsKeyArn": kms_key_arn,
+                              },
+                          )
+                      else:
+                          data = client.create_publishing_destination(
+                              DetectorId=kwargs['DetectorId'],
+                              DestinationType="S3",
+                              DestinationProperties={
+                                  "DestinationArn": kwargs['DestinationArn'],
+                                  "KmsKeyArn": kms_key_arn,
+                              },
+                          )
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  CreateMembersLambda:
+    Condition: GuardDutyAdminAccountIdNotEmpty
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-create-members"
+      Timeout: 300
+      Role: !GetAtt GuardDutyConfiguratorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ACCOUNT_ID: !Ref AWS::AccountId
+          EXCLUDE_ACCOUNTS: !Ref ExcludeAccounts
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          IS_STANDALONE_ACCOUNT: !If [ GuardDutyAdminAccountIdEmpty, "true", "false" ]
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import math
+          import ast
+          from os import getenv
+          import requests
+          import boto3
+          MAX_RETRY = 5
+          SLEEP_SECONDS = 10
+          CHECK_ACCT_MEMBER_RETRIES = 10
+          ORG_THROTTLE_PERIOD = 0.2
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          ACCOUNT_ID = getenv('ACCOUNT_ID')
+          EXCLUDE_ACCOUNTS = str(getenv('EXCLUDE_ACCOUNTS'))
+          EXCLUDE_ACCOUNTS = EXCLUDE_ACCOUNTS.replace(' ','').split(',') if EXCLUDE_ACCOUNTS else []
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          def flatten(d, parent_key=''):
+              items = []
+              for k, v in d.items():
+                  try:
+                      items.extend(flatten(v, '%s%s.' % (parent_key, k)).items())
+                  except AttributeError:
+                      items.append(('%s%s' % (parent_key, k), v))
+              return dict(items)
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'create_members')
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  detector_id = kwargs['DetectorId']
+                  try:
+                      number_of_create_members_calls = math.ceil(len(accounts) / 50)
+                      for api_call_number in range(0, number_of_create_members_calls):
+                          account_details = accounts[api_call_number * 50 : (api_call_number * 50) + 50]
+                          print(f"Calling create_member, api_call_number {api_call_number} with detector_id: {detector_id}")
+                          print(f"Create member account_details: {account_details}, account_details length: {len(account_details)}")
+                          create_members_response = method(DetectorId=detector_id, AccountDetails=account_details)
+                          if "UnprocessedAccounts" in create_members_response and create_members_response["UnprocessedAccounts"]:
+                              unprocessed = True
+                              retry_count = 0
+                              unprocessed_accounts = []
+                              print(f"Retry number; {retry_count} for unprocessed accounts")
+                              print(f"Sleeping for {SLEEP_SECONDS} before retry")
+                              sleep(SLEEP_SECONDS)
+                              while unprocessed:
+                                  retry_count += 1
+                                  print(f"Unprocessed Accounts: {create_members_response['UnprocessedAccounts']}")
+                                  remaining_accounts = get_unprocessed_account_details(create_members_response, accounts)
+                                  if len(remaining_accounts) > 0:
+                                      print("Remaining accounts found during create members")
+                                      print(f"Calling create_member, api_call_number {api_call_number} with detector_id: {detector_id}")
+                                      print(f"Create member account_details: {remaining_accounts}, remaining_accounts length: {len(remaining_accounts)}")
+                                      create_members_response = method(DetectorId=detector_id, AccountDetails=remaining_accounts)
+                                      if "UnprocessedAccounts" in create_members_response and create_members_response["UnprocessedAccounts"]:
+                                          print("Unprocessed accounts found during retry")
+                                          unprocessed_accounts = create_members_response["UnprocessedAccounts"]
+                                          if retry_count == MAX_RETRY:
+                                              unprocessed = False
+                              if unprocessed_accounts:
+                                  print(f"Unprocessed Member Accounts: {unprocessed_accounts}")
+                                  raise ValueError("Unprocessed Member Accounts while Creating Members")
+                      print(f"Waiting {SLEEP_SECONDS} seconds before sending success response")
+                      sleep(SLEEP_SECONDS)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': flatten(data)
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def __assume_role():
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=SSO_CROSS_ACCOUNT_ROLE_ARN, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts and child['Id'] not in EXCLUDE_ACCOUNTS:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_active_organization_accounts(org_client, deployment_targets: list, exclude_account: list = None) -> list:
+              active_accounts = []
+              active_accounts_details = []
+              describe_method=getattr(org_client, 'describe_account')
+              try:
+                  if not IS_STANDALONE_ACCOUNT and exclude_account is not None:
+                      for target in deployment_targets:
+                          active_accounts.extend(get_children(org_client, 'ACCOUNT', target, exclude_account))
+                          active_accounts.extend(get_children(org_client, 'ORGANIZATIONAL_UNIT', target, exclude_account))
+                  else:
+                      active_accounts.append(ACCOUNT_ID)
+                  for account in active_accounts:
+                      response = describe_method(AccountId=account)
+                      if 'Account' in response:
+                          if response["Account"]["Status"] == "ACTIVE":
+                              account_record = {"AccountId": response["Account"]["Id"], "Email": response["Account"]["Email"]}
+                              active_accounts_details.append(account_record)
+                      sleep(ORG_THROTTLE_PERIOD)
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts_details
+          def get_unprocessed_account_details(create_members_response, accounts: list) -> list:
+              remaining_accounts = []
+              for unprocessed_account in create_members_response["UnprocessedAccounts"]:
+                  if "error" in unprocessed_account["Result"]:
+                      print(f"{unprocessed_account}")
+                      raise ValueError(f"Internal Error creating member accounts: {unprocessed_account['Result']}") from None
+                  for account_record in accounts:
+                      if account_record["AccountId"] == unprocessed_account["AccountId"]:
+                          remaining_accounts.append(account_record)
+              return remaining_accounts
+
+  UpdateConfigurationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-guardduty-update-configuration"
+      Timeout: 300
+      Role: !GetAtt GuardDutyConfiguratorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:BOTO3_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ACCOUNT_ID: !Ref AWS::AccountId
+          EXCLUDE_ACCOUNTS: !Ref ExcludeAccounts
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+          IS_STANDALONE_ACCOUNT: !If [ GuardDutyAdminAccountIdEmpty, "true", "false" ]
+      Code:
+        ZipFile: |
+          import json
+          from time import sleep
+          import math
+          import ast
+          from os import getenv
+          import requests
+          import boto3
+          SLEEP_SECONDS = 10
+          ORG_THROTTLE_PERIOD = 0.2
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          ACCOUNT_ID = getenv('ACCOUNT_ID')
+          EXCLUDE_ACCOUNTS = str(getenv('EXCLUDE_ACCOUNTS'))
+          EXCLUDE_ACCOUNTS = EXCLUDE_ACCOUNTS.replace(' ','').split(',') if EXCLUDE_ACCOUNTS else []
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          IS_STANDALONE_ACCOUNT = json.loads(getenv('IS_STANDALONE_ACCOUNT'))
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              if event_type in ['Create']:
+                  method=getattr(client, 'update_organization_configuration')
+                  detector_id = kwargs['DetectorId']
+                  gd_features = kwargs['gdFeatures']
+                  finding_publishing_frequency = kwargs['FindingPublishingFrequency']
+                  active_session = __assume_role()
+                  org_client = active_session.client("organizations")
+                  deployment_targets = kwargs['DeploymentTargets'].replace(" ", "").split(",")
+                  accounts = get_active_organization_accounts(org_client, deployment_targets, [str(kwargs['ExcludeAccount'])] if 'ExcludeAccount' in kwargs else None)
+                  account_ids = get_account_ids(accounts)
+                  try:
+                      for key, val in gd_features.items():
+                          gd_features[key] = json.loads(val)
+                      org_configuration_params = set_org_configuration_params(detector_id, gd_features)
+                      admin_configuration_params = set_admin_configuration_params(detector_id, finding_publishing_frequency, gd_features)
+                      if 'IsOrgSetup' in kwargs:
+                          method(**org_configuration_params)
+
+                      print(f"org_configuration_params: {org_configuration_params}")
+                      print(f"admin_configuration_params: {admin_configuration_params}")
+                      client.update_detector(**admin_configuration_params)
+
+                      configuration_params = set_configuration_params(detector_id, account_ids, gd_features)
+                      number_of_create_members_calls: int = math.ceil(len(configuration_params["AccountIds"]) / 50)
+                      if 'IsOrgSetup' in kwargs:
+                          print("Iterating through api calls for each group of accounts...")
+                          for api_call_number in range(0, number_of_create_members_calls):
+                              configuration_params["AccountIds"] = account_ids[api_call_number * 50 : (api_call_number * 50) + 50]
+                              print(f"Configuration parameters are: {configuration_params}")
+                              print(f"Calling update_member_detectors with params {configuration_params}")
+                              update_member_response = client.update_member_detectors(**configuration_params)
+                              if "UnprocessedAccounts" in update_member_response and update_member_response["UnprocessedAccounts"]:
+                                  check_for_unprocessed_accounts_over_50(client, configuration_params, account_ids, update_member_response)
+                          if "UnprocessedAccounts" in update_member_response and update_member_response["UnprocessedAccounts"]:
+                              check_for_unprocessed_accounts(client, configuration_params, account_ids, update_member_response)
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_account_ids(accounts: list) -> list:
+              account_ids: list[str] = []
+              for account in accounts:
+                  account_ids.append(account["AccountId"])
+              return account_ids
+          def __assume_role():
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=SSO_CROSS_ACCOUNT_ROLE_ARN, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts and child['Id'] not in EXCLUDE_ACCOUNTS:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_active_organization_accounts(org_client, deployment_targets: list, exclude_account: list = None) -> list:
+              active_accounts = []
+              active_accounts_details = []
+              describe_method=getattr(org_client, 'describe_account')
+              try:
+                  if not IS_STANDALONE_ACCOUNT and exclude_account is not None:
+                      for target in deployment_targets:
+                          active_accounts.extend(get_children(org_client, 'ACCOUNT', target, exclude_account))
+                          active_accounts.extend(get_children(org_client, 'ORGANIZATIONAL_UNIT', target, exclude_account))
+                  else:
+                      active_accounts.append(ACCOUNT_ID)
+                  for account in active_accounts:
+                      response = describe_method(AccountId=account)
+                      if 'Account' in response:
+                          if response["Account"]["Status"] == "ACTIVE":
+                              account_record = {"AccountId": response["Account"]["Id"], "Email": response["Account"]["Email"]}
+                              active_accounts_details.append(account_record)
+                      sleep(ORG_THROTTLE_PERIOD)
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts_details
+          def set_org_configuration_params(detector_id: str, gd_features: dict) -> dict:
+              org_configuration_params = {"DetectorId": detector_id, "AutoEnable": True, "Features": []}
+              if gd_features["autoEnableS3Logs"]:
+                  org_configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "AutoEnable": "NEW"})
+              else:
+                  org_configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "AutoEnable": "NONE"})
+              if gd_features["enableEksAuditLogs"]:
+                  org_configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "AutoEnable": "NEW"})
+              else:
+                  org_configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "AutoEnable": "NONE"})
+              if gd_features["autoEnableMalwareProtection"]:
+                  org_configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "AutoEnable": "NEW"})
+              else:
+                  org_configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "AutoEnable": "NONE"})
+              if gd_features["enableRdsLoginEvents"]:
+                  org_configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "AutoEnable": "NEW"})
+              else:
+                  org_configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "AutoEnable": "NONE"})
+              if gd_features["enableEKSRuntimeMonitoring"]:
+                  config = {"Name": "RUNTIME_MONITORING", "AutoEnable": "NEW", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "AutoEnable": "NONE"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "AutoEnable": "NONE"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "AutoEnable": "NONE"})
+                  org_configuration_params["Features"].append(config)
+              else:
+                  config = {"Name": "RUNTIME_MONITORING", "AutoEnable": "NONE", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "AutoEnable": "NONE"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "AutoEnable": "NONE"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "AutoEnable": "NEW"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "AutoEnable": "NONE"})
+                  org_configuration_params["Features"].append(config)
+              if gd_features["enableLambdaNetworkLogs"]:
+                  org_configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "AutoEnable": "NEW"})
+              else:
+                  org_configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "AutoEnable": "NONE"})
+              return org_configuration_params
+          def set_admin_configuration_params(detector_id: str, finding_publishing_frequency: str, gd_features: dict) -> dict:
+              admin_configuration_params = {
+                  "DetectorId": detector_id,
+                  "FindingPublishingFrequency": finding_publishing_frequency,
+                  "Features": [],
+              }
+              if gd_features["autoEnableS3Logs"]:
+                  admin_configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "Status": "ENABLED"})
+              else:
+                  admin_configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "Status": "DISABLED"})
+              if gd_features["enableEksAuditLogs"]:
+                  admin_configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "Status": "ENABLED"})
+              else:
+                  admin_configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "Status": "DISABLED"})
+              if gd_features["autoEnableMalwareProtection"]:
+                  admin_configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "Status": "ENABLED"})
+              else:
+                  admin_configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "Status": "DISABLED"})
+              if gd_features["enableRdsLoginEvents"]:
+                  admin_configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "Status": "ENABLED"})
+              else:
+                  admin_configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "Status": "DISABLED"})
+              if gd_features["enableEKSRuntimeMonitoring"]:
+                  config = {"Name": "RUNTIME_MONITORING", "Status": "ENABLED", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  admin_configuration_params["Features"].append(config)
+              else:
+                  config = {"Name": "RUNTIME_MONITORING", "Status": "DISABLED", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  admin_configuration_params["Features"].append(config)
+              if gd_features["enableLambdaNetworkLogs"]:
+                  admin_configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "Status": "ENABLED"})
+              else:
+                  admin_configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "Status": "DISABLED"})
+              return admin_configuration_params
+          def set_configuration_params(detector_id: str, account_ids: list, gd_features: dict):
+              print("Updating Member Detectors")
+              configuration_params = {"DetectorId": detector_id, "AccountIds": account_ids, "Features": []}
+              print("Setting feature configuration parameters once...")
+              if gd_features["autoEnableS3Logs"]:
+                  configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "Status": "ENABLED"})
+              else:
+                  configuration_params["Features"].append({"Name": "S3_DATA_EVENTS", "Status": "DISABLED"})
+              if gd_features["enableEksAuditLogs"]:
+                  configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "Status": "ENABLED"})
+              else:
+                  configuration_params["Features"].append({"Name": "EKS_AUDIT_LOGS", "Status": "DISABLED"})
+              if gd_features["autoEnableMalwareProtection"]:
+                  configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "Status": "ENABLED"})
+              else:
+                  configuration_params["Features"].append({"Name": "EBS_MALWARE_PROTECTION", "Status": "DISABLED"})
+              if gd_features["enableRdsLoginEvents"]:
+                  configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "Status": "ENABLED"})
+              else:
+                  configuration_params["Features"].append({"Name": "RDS_LOGIN_EVENTS", "Status": "DISABLED"})
+              if gd_features["enableEKSRuntimeMonitoring"]:
+                  config = {"Name": "RUNTIME_MONITORING", "Status": "ENABLED", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  configuration_params["Features"].append(config)
+              else:
+                  config = {"Name": "RUNTIME_MONITORING", "Status": "DISABLED", "AdditionalConfiguration": []}
+                  if gd_features["enableEksAddonManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EKS_ADDON_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEcsFargateAgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "ECS_FARGATE_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  if gd_features["enableEc2AgentManagement"]:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "ENABLED"})
+                  else:
+                      config['AdditionalConfiguration'].append({"Name": "EC2_AGENT_MANAGEMENT", "Status": "DISABLED"})
+                  configuration_params["Features"].append(config)
+              if gd_features["enableLambdaNetworkLogs"]:
+                  configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "Status": "ENABLED"})
+              else:
+                  configuration_params["Features"].append({"Name": "LAMBDA_NETWORK_LOGS", "Status": "DISABLED"})
+              return configuration_params
+          def check_for_unprocessed_accounts_over_50(guardduty_client, configuration_params: dict, account_ids: list, update_member_response) -> list:
+              unprocessed = True
+              retry_count = 0
+              unprocessed_accounts = []
+              while unprocessed:
+                  print(f"Unprocessed accounts found. Retry number; {retry_count} for unprocessed accounts")
+                  print(f"Sleeping for {SLEEP_SECONDS} before retry")
+                  sleep(SLEEP_SECONDS)
+                  retry_count += 1
+                  remaining_accounts = get_remaining_accounts(update_member_response, account_ids)
+
+                  if len(remaining_accounts) > 0:
+                      configuration_params["AccountIds"] = remaining_accounts
+                      print(f"Remaining accounts found during update_member_detectors {remaining_accounts}")
+                      print(f"Calling retry update_member_detectors with params {configuration_params}")
+                      update_member_response = guardduty_client.update_member_detectors(**configuration_params)
+                      if "UnprocessedAccounts" in update_member_response and update_member_response["UnprocessedAccounts"]:
+                          print(f"Unprocessed accounts found during retry: {update_member_response['UnprocessedAccounts']}")
+                          print(f"Calling update_member_detectors with params {configuration_params}")
+                          unprocessed_accounts = update_member_response["UnprocessedAccounts"]
+                          if retry_count == 5:
+                              print("retry count is 5 setting unprocessed to false")
+                              unprocessed = False
+                      else:
+                          print("No more unprocessed accounts found setting unprocessed to false")
+              return unprocessed_accounts
+          def check_for_unprocessed_accounts(guardduty_client, configuration_params: dict, account_ids: list, update_member_response) -> None:
+              unprocessed = True
+              retry_count = 0
+              unprocessed_accounts = []
+              while unprocessed:
+                  sleep(SLEEP_SECONDS)
+                  retry_count += 1
+                  remaining_accounts = get_remaining_accounts(update_member_response, account_ids)
+
+                  if remaining_accounts:
+                      configuration_params["AccountIds"] = remaining_accounts
+                      update_member_response = guardduty_client.update_member_detectors(**configuration_params)
+                      if "UnprocessedAccounts" in update_member_response and update_member_response["UnprocessedAccounts"]:
+                          unprocessed_accounts = update_member_response["UnprocessedAccounts"]
+                          if retry_count == 5:
+                              unprocessed = False
+
+                  if unprocessed_accounts:
+                      print(f"Update Member Detectors Unprocessed Member Accounts: {unprocessed_accounts}")
+                      raise ValueError("Unprocessed Member Accounts while Updating Member Detectors")
+          def get_remaining_accounts(update_member_response, account_ids: list) -> list:
+              remaining_accounts: list = []
+              for unprocessed_account in update_member_response["UnprocessedAccounts"]:
+                  if unprocessed_account["AccountId"] in account_ids:
+                      remaining_accounts.append(unprocessed_account["AccountId"])
+              return remaining_accounts
+
+  CreateEventBusRuleGuardDutyFindingsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: EventsReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EventsAccess
+            Effect: Allow
+            Action:
+            - events:PutRule
+            - events:PutTargets
+            - events:DeleteRule
+            - events:RemoveTargets
+            - events:ListTargetsByRule
+            - iam:PassRole
+            Resource: "*"
+
+  CreateEventBusRuleGuardDutyFindingsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-create-guardduty-findings-event-rule"
+      Timeout: 30
+      Role: !GetAtt CreateEventBusRuleGuardDutyFindingsLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: !Sub |
+          import json
+          import ast
+          import boto3
+          import requests
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              guardduty_security_levels = kwargs['EventPattern']['detail']['severity']
+              targets = []
+              if 'Targets' in kwargs:
+                  targets.extend(kwargs['Targets'])
+                  del kwargs['Targets']
+              event_rule_name = kwargs['Name']
+              if event_type in ['Create', 'Update']:
+                  severity_levels = []
+                  method=getattr(client, 'put_rule')
+                  try:
+                      severity_levels.extend(get_severity_levels(guardduty_security_levels))
+                      kwargs['EventPattern']['detail']['severity'] = severity_levels
+                      kwargs['EventPattern'] = json.dumps(kwargs['EventPattern'])
+                      print(f"...Creating EventBridge Rule for GuardDuty Findings with args: {kwargs}")
+                      data = method(**kwargs)
+                      print({"API_Call": "events:PutRule", "Response": data})
+                      print(f"...Adding following target to EventBridge Rule named {event_rule_name}: {targets}")
+                      response = client.put_targets(
+                          Rule=event_rule_name,
+                          Targets=targets
+                      )
+                      print({"API_Call": "events:PutTargets", "Response": response})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_rule')
+                  try:
+                      targets = get_event_rule_targets(client, event['PhysicalResourceId'])
+                      if targets:
+                          print(f"...Removing targets [ {(',').join(targets)} ] from EventBridge Rule named {event['PhysicalResourceId']}")
+                          response = client.remove_targets(
+                              Rule=event['PhysicalResourceId'],
+                              Ids=targets
+                          )
+                          print({"API_Call": "events:DeleteTargets", "Response": response})
+                      print(f"...Deleting EventBridge Rule named {event['PhysicalResourceId']}")
+                      data = method(Name=event['PhysicalResourceId'])
+                      print({"API_Call": "events:DeleteRule", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except client.exceptions.ResourceNotFoundException:
+                      print("EventRule not found to delete. Skipping...")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event_rule_name,
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_severity_levels(severities: list):
+              severity_levels = []
+              if 'ALL' in severities:
+                  severity_levels.extend(get_numbers_within_range(10, 90))
+              else:
+                  if 'LOW' in severities:
+                      severity_levels.extend(get_numbers_within_range(10, 40))
+                  if 'MEDIUM' in severities:
+                      severity_levels.extend(get_numbers_within_range(40, 70))
+                  if 'HIGH' in severities:
+                      severity_levels.extend(get_numbers_within_range(70, 90))
+              return sorted(severity_levels)
+          def get_numbers_within_range(min, max):
+              numbers = []
+              for x in range(min, max):
+                  num = x / 10
+                  if num.is_integer():
+                      numbers.append(int(num))
+                  numbers.append(num)
+              return numbers
+          def get_event_rule_targets(client, rule_name):
+              targets = []
+              try:
+                  response = client.list_targets_by_rule(Rule=rule_name)
+                  if 'Targets' in response:
+                      for target in response['Targets']:
+                          targets.append(target['Id'])
+              except client.exceptions.ResourceNotFoundException:
+                  print("EventRule not found to delete. Skipping...")
+              except Exception as error:
+                  print(str(error))
+              return targets
+
+  CreateDetector:
+    Condition: GuardDutyAdminAccountIdEmpty
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt CreateDetectorLambda.Arn
+
+  GetDetector:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt GetDetectorLambda.Arn
+
+  CreatePublishingDestinations:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt CreatePublishingDestinationLambda.Arn
+      KwArgs:
+        DetectorId: !GetAtt GetDetector.Id
+        DestinationArn: !Join ['-', [ !Sub "arn:aws:s3:::${GuardDutyDeliveryBucketPrefix}", !If [ LogArchiveAccountIdEmpty, !Ref AWS::AccountId, !Ref LogArchiveAccountId ], !If [ CentralLoggingBucket, !Ref HomeRegion, !Ref AWS::Region ] ]]
+
+  UpdateConfiguration:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt UpdateConfigurationLambda.Arn
+      KwArgs:
+        IsOrgSetup: !If [GuardDutyAdminAccountIdNotEmpty, !Ref CreateMembers, !Ref AWS::NoValue]
+        DeploymentTargets: !Ref DeploymentTargets
+        ExcludeAccount: !If [GuardDutyAdminAccountIdEmpty, !Ref AWS::NoValue, !Ref AWS::AccountId]
+        DetectorId: !GetAtt GetDetector.Id
+        FindingPublishingFrequency: !Ref FindingPublishingFrequency
+        gdFeatures:
+          autoEnableS3Logs: !Ref AutoEnableS3Logs
+          enableEksAuditLogs: !Ref EnableEKSAuditLogs
+          autoEnableMalwareProtection: !Ref AutoEnableMalwareProtection
+          enableRdsLoginEvents: !Ref EnableRDSLoginEvents
+          enableEKSRuntimeMonitoring: !Ref EnableEKSRuntimeMonitoring
+          enableEksAddonManagement: !Ref EnableEKSAddonManagement
+          enableLambdaNetworkLogs: !Ref EnableLambdaNetworkLogs
+          enableEcsFargateAgentManagement: !Ref EnableEcsFargateAgentManagement
+          enableEc2AgentManagement: !Ref EnableEc2AgentManagement
+
+  CreateMembers:
+    Condition: GuardDutyAdminAccountIdNotEmpty
+    DependsOn: CreatePublishingDestinations
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: guardduty
+      ServiceToken: !GetAtt CreateMembersLambda.Arn
+      KwArgs:
+        DeploymentTargets: !Ref DeploymentTargets
+        ExcludeAccount: !If [GuardDutyAdminAccountIdEmpty, !Ref AWS::NoValue, !Ref AWS::AccountId]
+        DetectorId: !GetAtt GetDetector.Id
+
+  CreateEventBusRuleGuardDutyFindings:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: events
+      ServiceToken: !GetAtt CreateEventBusRuleGuardDutyFindingsLambda.Arn
+      KwArgs:
+        Name: !Sub "${ProjectName}-guardduty-findings-rule"
+        Description: Trigger Parent Event Bus whenever there is a guardduty finding
+        EventPattern:
+          source:
+          - aws.guardduty
+          detail-type:
+          - GuardDuty Finding
+          detail:
+            severity: !Ref GuardDutySeverityLevels
+        State: ENABLED
+        Targets: [
+          {
+            'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+            'Id': !Sub 'guardduty-findings-${AWS::AccountId}',
+            'RoleArn': !GetAtt EventBusRoleChild.Arn
+          }
+        ]
+
+  EventBusRoleChild:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-guardduty-send-finding-events-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: guardduty-send-finding-events-policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SendEvents
+            Effect: Allow
+            Action:
+            - events:PutEvents
+            Resource: !Sub arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}

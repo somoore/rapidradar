@@ -1,0 +1,97 @@
+# VPCs
+TagVPCs: true
+TagVPCUsingTagTemplateForTerraformDeployment: true
+VPCTagKeysForTagTemplateGeneration: "DeployMethod,Team"
+TagsKeyValueVPCs: "DeployMethod=cloudformation,Team=security"
+SendMissingTagsNotificationVPCs: false
+
+# Subnets
+TagSubnets: false
+TagSubnetUsingTagTemplateForTerraformDeployment: false
+SubnetTagKeysForTagTemplateGeneration: ""
+TagsKeyValueSubnets: "DeployedBy=user@example.com,Team=<team>"
+SendMissingTagsNotificationSubnets: true
+
+# EBS Volumes
+TagEbsVolumes: false
+TagEbsVolumeUsingTagTemplateForTerraformDeployment: false
+EbsVolumeTagKeysForTagTemplateGeneration: ""
+TagsKeyValueEbsVolumes: ""
+SendMissingTagsNotificationEbsVolumes: false
+
+# Elastic IPs
+TagEIPs: false
+TagEIPUsingTagTemplateForTerraformDeployment: false
+EIPTagKeysForTagTemplateGeneration: ""
+TagsKeyValueEIPs: ""
+SendMissingTagsNotificationEIPs: false
+
+# EBS Snapshots
+TagEbsSnapshots: false
+TagEbsSnapshotUsingTagTemplateForTerraformDeployment: false
+EbsSnapshotTagKeysForTagTemplateGeneration: ""
+TagsKeyValueEbsSnapshots: ""
+SendMissingTagsNotificationEbsSnapshots: false
+
+# AMIs
+TagAMIs: false
+TagAMIUsingTagTemplateForTerraformDeployment: false
+AMITagKeysForTagTemplateGeneration: ""
+TagsKeyValueAMIs: ""
+SendMissingTagsNotificationAMIs: false
+
+# EC2 Instances
+TagEC2Instances: true
+TagEC2InstanceUsingTagTemplateForTerraformDeployment: false
+EC2InstanceTagKeysForTagTemplateGeneration: ""
+TagsKeyValueEC2Instances: "DeployMethod=aws-console,Team=security"
+SendMissingTagsNotificationEC2Instances: false
+
+# EKS Clusters
+TagEksClusters: true
+TagEksClusterUsingTagTemplateForTerraformDeployment: false
+EksClusterTagKeysForTagTemplateGeneration: ""
+TagsKeyValueEksClusters: "DeployMethod=aws-console,Team=security"
+SendMissingTagsNotificationEksClusters: false
+
+# RDS Clusters and Instances
+TagRDSClusterInstances: true
+TagRDSClusterInstanceUsingTagTemplateForTerraformDeployment: true
+RDSClusterInstanceTagKeysForTagTemplateGeneration: "DeployedBy,DeployMethod,Team"
+TagsKeyValueRDSClusterInstances: "DeployMethod=aws-console,Team=security"
+SendMissingTagsNotificationRDSClusterInstances: false
+
+# Elastic FileSystems
+TagEFS: true
+TagEfsUsingTagTemplateForTerraformDeployment: true
+EFSTagKeysForTagTemplateGeneration: "DeployedBy,DeployMethod,Team"
+TagsKeyValueEFS: "DeployMethod=aws-console,Team=security"
+SendMissingTagsNotificationEFS: false
+
+# FSX FileSystems
+TagFSX: false
+TagFsxUsingTagTemplateForTerraformDeployment: false
+FSXTagKeysForTagTemplateGeneration: ""
+TagsKeyValueFSX: ""
+SendMissingTagsNotificationFSX: false
+
+# SecretsManager Secrets
+TagSecrets: false
+TagSecretUsingTagTemplateForTerraformDeployment: false
+SecretTagKeysForTagTemplateGeneration: ""
+TagsKeyValueSecrets: ""
+SendMissingTagsNotificationSecrets: false
+
+# Backup Plans
+TagBackupPlans: false
+TagBackupPlanUsingTagTemplateForTerraformDeployment: false
+BackupPlanTagKeysForTagTemplateGeneration: ""
+TagsKeyValueBackupPlans: ""
+SendMissingTagsNotificationBackupPlans: false
+
+# LoadBalancers
+TagLoadbalancers: false
+TagLoadbalancerUsingTagTemplateForTerraformDeployment: false
+LoadbalancerTagKeysForTagTemplateGeneration: ""
+TagsKeyValueLoadbalancers: ""
+SendMissingTagsNotificationLoadbalancers: false

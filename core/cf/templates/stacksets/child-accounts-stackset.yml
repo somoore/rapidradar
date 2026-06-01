@@ -1,0 +1,3564 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates EventBridge Rules which communicate with Automation Event Bus,
+  Creates Cross Account Role
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - IsControlTowerEnabled
+          - AutomationAccountId
+          - AutomationEventBusName
+          - LogArchiveAccountId
+          - HomeRegion
+          - EnableEBSDefaultEncryption
+          - SlackBotTokenProvided
+          - StepFunctionExecutorLambdaARN
+          - CaptureExistingResourcesSfnARN
+          - AutoTaggerSfnARN
+      - Label:
+          default: VPC FlowLogs
+        Parameters:
+          - EnableVpcFlowLogs
+          - FlowLogsDeliveryBucketPrefix
+          - VpcFlowLogsTagKeyValue
+      - Label:
+          default: CloudTrail Data Trail Configuration
+        Parameters:
+          - CreateManagementTrail
+          - CreateDataTrail
+      - Label:
+          default: Post Deploy SSM Automation
+        Parameters:
+          - AddSupportforPostDeploySSMAutomation
+          - EnableEC2InstanceConfigurator
+          - SSMDocumentName
+          - TrackSSMDocumentAssociationFailures
+          - StateManagerMaxConcurrency
+          - StateManagerMaxErrors
+      - Label:
+          default: IAM Secret-Access KeyPair Access Tracker Project
+        Parameters:
+          - AddSupportforIAMKeyPairAccessTracker
+      - Label:
+          default: CMDB Project
+        Parameters:
+          - AddSupportforCMDB
+          - EnableCostOptimizerRecommendations
+      - Label:
+          default: Auto-Tagger
+        Parameters:
+          - TagVPCs
+          - TagVPCUsingTagTemplateForTerraformDeployment
+          - VPCTagKeysForTagTemplateGeneration
+          - TagSubnets
+          - TagSubnetUsingTagTemplateForTerraformDeployment
+          - SubnetTagKeysForTagTemplateGeneration
+          - TagEbsVolumes
+          - TagEbsVolumeUsingTagTemplateForTerraformDeployment
+          - EbsVolumeTagKeysForTagTemplateGeneration
+          - TagEIPs
+          - TagEIPUsingTagTemplateForTerraformDeployment
+          - EIPTagKeysForTagTemplateGeneration
+          - TagEbsSnapshots
+          - TagEbsSnapshotUsingTagTemplateForTerraformDeployment
+          - EbsSnapshotTagKeysForTagTemplateGeneration
+          - TagAMIs
+          - TagAMIUsingTagTemplateForTerraformDeployment
+          - AMITagKeysForTagTemplateGeneration
+          - TagEC2Instances
+          - TagEC2InstanceUsingTagTemplateForTerraformDeployment
+          - EC2InstanceTagKeysForTagTemplateGeneration
+          - TagEksClusters
+          - TagEksClusterUsingTagTemplateForTerraformDeployment
+          - EksClusterTagKeysForTagTemplateGeneration
+          - TagRDSClusterInstances
+          - TagRDSClusterInstanceUsingTagTemplateForTerraformDeployment
+          - RDSClusterInstanceTagKeysForTagTemplateGeneration
+          - TagEFS
+          - TagEfsUsingTagTemplateForTerraformDeployment
+          - EFSTagKeysForTagTemplateGeneration
+          - TagFSX
+          - TagFsxUsingTagTemplateForTerraformDeployment
+          - FSXTagKeysForTagTemplateGeneration
+          - TagSecrets
+          - TagSecretUsingTagTemplateForTerraformDeployment
+          - SecretTagKeysForTagTemplateGeneration
+          - TagBackupPlans
+          - TagBackupPlanUsingTagTemplateForTerraformDeployment
+          - BackupPlanTagKeysForTagTemplateGeneration
+          - TagLoadbalancers
+          - TagLoadbalancerUsingTagTemplateForTerraformDeployment
+          - LoadbalancerTagKeysForTagTemplateGeneration
+      - Label:
+          default: Alerts Customization
+        Parameters:
+          - UnusedResourcesDetectionBypassTagKey
+          - DisableDetectionStoppedEC2Instances
+          - DisableDetectionUnusedSecurityGroups
+          - DisableDetectionUnusedEBSVolumes
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      IsControlTowerEnabled:
+        default: Is Control Tower enabled in your Organization?
+      AutomationAccountId:
+        default: Automation Account ID
+      AutomationEventBusName:
+        default: Event Bus Name in Automation Account
+      LogArchiveAccountId:
+        default: Log Archive account ID (Skip if its a Standalone Deployment)
+      HomeRegion:
+        default: Home AWS Region
+      StepFunctionExecutorLambdaARN:
+        default: ARN of StepFunction Executor Lambda Function
+      CaptureExistingResourcesSfnARN:
+        default: ARN of Capture Existing Active Resources Step Function
+      AutoTaggerSfnARN:
+        default: ARN of Auto-Tagger Step Function
+      EnableEBSDefaultEncryption:
+        default: Enable default EBS encryption to use the default KMS key within all provided regions?
+      SlackBotTokenProvided:
+        default: Slack Bot Token provided for Slack Interactive alerts?
+      EnableVpcFlowLogs:
+        default: Enable VPC FlowLogs?
+      FlowLogsDeliveryBucketPrefix:
+        default: Flow Logs Delivery Bucket Prefix
+      VpcFlowLogsTagKeyValue:
+        default: Tags Key-Value for VPC Flow Logs
+      CreateManagementTrail:
+        default: Create Management CloudTrail Trail?
+      CreateDataTrail:
+        default: Create Data CloudTrail Trail?
+      AddSupportforPostDeploySSMAutomation:
+        default: Enable Post Deploy SSM Automation Project?
+      AddSupportforIAMKeyPairAccessTracker:
+        default: Deploy IAM Secret-Access KeyPair Access Tracker Project?
+      AddSupportforCMDB:
+        default: Deploy CMDB Project?
+      EnableCostOptimizerRecommendations:
+        default: Enable AWS Cost Optimizer Recommendations?
+      TagVPCs:
+        default: Enable auto-tagger for VPCs?
+      TagVPCUsingTagTemplateForTerraformDeployment:
+        default: Tag VPCs using SSM Tag Template for Terraform Deployments?
+      VPCTagKeysForTagTemplateGeneration:
+        default: Tag Keys for VPCs for Tag Template Generation
+      TagSubnets:
+        default: Enable auto-tagger for Subnets?
+      TagSubnetUsingTagTemplateForTerraformDeployment:
+        default: Tag Subnets using SSM Tag Template for Terraform Deployments?
+      SubnetTagKeysForTagTemplateGeneration:
+        default: Tag Keys for Subnets for Tag Template Generation
+      TagEbsVolumes:
+        default: Enable auto-tagger for EBS Volumes?
+      TagEbsVolumeUsingTagTemplateForTerraformDeployment:
+        default: Tag EBS Volumes using SSM Tag Template for Terraform Deployments?
+      EbsVolumeTagKeysForTagTemplateGeneration:
+        default: Tag Keys for EBS Volumes for Tag Template Generation
+      TagEIPs:
+        default: Enable auto-tagger for Elastic IPs?
+      TagEIPUsingTagTemplateForTerraformDeployment:
+        default: Tag Elastic IPs using SSM Tag Template for Terraform Deployments?
+      EIPTagKeysForTagTemplateGeneration:
+        default: Tag Keys for Elastic IPs for Tag Template Generation
+      TagEbsSnapshots:
+        default: Enable auto-tagger for EBS Snapshots?
+      TagEbsSnapshotUsingTagTemplateForTerraformDeployment:
+        default: Tag EBS Snapshots using SSM Tag Template for Terraform Deployments?
+      EbsSnapshotTagKeysForTagTemplateGeneration:
+        default: Tag Keys for EBS Snapshots for Tag Template Generation
+      TagAMIs:
+        default: Enable auto-tagger for AMIs?
+      TagAMIUsingTagTemplateForTerraformDeployment:
+        default: Tag AMIs using SSM Tag Template for Terraform Deployments?
+      AMITagKeysForTagTemplateGeneration:
+        default: Tag Keys for AMIs for Tag Template Generation
+      TagEC2Instances:
+        default: Enable auto-tagger for EC2 Instances?
+      TagEC2InstanceUsingTagTemplateForTerraformDeployment:
+        default: Tag EC2 Instances using SSM Tag Template for Terraform Deployments?
+      EC2InstanceTagKeysForTagTemplateGeneration:
+        default: Tag Keys for EC2 Instances for Tag Template Generation
+      TagEksClusters:
+        default: Enable auto-tagger for EKS Clusters?
+      TagEksClusterUsingTagTemplateForTerraformDeployment:
+        default: Tag EKS Clusters using SSM Tag Template for Terraform Deployments?
+      EksClusterTagKeysForTagTemplateGeneration:
+        default: Tag Keys for EKS Clusters for Tag Template Generation
+      TagRDSClusterInstances:
+        default: Enable auto-tagger for RDS Clusters and Instances?
+      TagRDSClusterInstanceUsingTagTemplateForTerraformDeployment:
+        default: Tag RDS Clusters and Instances using SSM Tag Template for Terraform Deployments?
+      RDSClusterInstanceTagKeysForTagTemplateGeneration:
+        default: Tag Keys for RDS Clusters and Instances for Tag Template Generation
+      TagEFS:
+        default: Enable auto-tagger for EFS?
+      TagEfsUsingTagTemplateForTerraformDeployment:
+        default: Tag EFS using SSM Tag Template for Terraform Deployments?
+      EFSTagKeysForTagTemplateGeneration:
+        default: Tag Keys for EFS for Tag Template Generation
+      TagFSX:
+        default: Enable auto-tagger for FSX?
+      TagFsxUsingTagTemplateForTerraformDeployment:
+        default: Tag FSX using SSM Tag Template for Terraform Deployments?
+      FSXTagKeysForTagTemplateGeneration:
+        default: Tag Keys for FSX for Tag Template Generation
+      TagSecrets:
+        default: Enable auto-tagger for SecretsManager Secrets?
+      TagSecretUsingTagTemplateForTerraformDeployment:
+        default: Tag SecretsManager Secret using SSM Tag Template for Terraform Deployments?
+      SecretTagKeysForTagTemplateGeneration:
+        default: Tag Keys for SecretsManager Secret for Tag Template Generation
+      TagBackupPlans:
+        default: Enable auto-tagger for Backup Plans?
+      TagBackupPlanUsingTagTemplateForTerraformDeployment:
+        default: Tag Backup Plans using SSM Tag Template for Terraform Deployments?
+      BackupPlanTagKeysForTagTemplateGeneration:
+        default: Tag Keys for Backup Plans for Tag Template Generation
+      TagLoadbalancers:
+        default: Enable auto-tagger for LoadBalancers?
+      TagLoadbalancerUsingTagTemplateForTerraformDeployment:
+        default: Tag LoadBalancers using SSM Tag Template for Terraform Deployments?
+      LoadbalancerTagKeysForTagTemplateGeneration:
+        default: Tag Keys for LoadBalancers for Tag Template Generation
+      EnableEC2InstanceConfigurator:
+        default: Apply Custom Configurations to newly launched EC2 Instances?
+      SSMDocumentName:
+        default: SSM Document Name
+      TrackSSMDocumentAssociationFailures:
+        default: Track Failures for SSM Document Association?
+      StateManagerMaxConcurrency:
+        default: Maximum number of targets allowed to run the association at the same time
+      StateManagerMaxErrors:
+        default: Number of errors allowed before the system stops sending requests to run the association on additional targets
+      UnusedResourcesDetectionBypassTagKey:
+        default: Tag Key that needs to be present on unused resources if detection needs to be bypassed
+      DisableDetectionStoppedEC2Instances:
+        default: Disable detection for stopped EC2 Instances?
+      DisableDetectionUnusedSecurityGroups:
+        default: Disable detection for unused Security Groups?
+      DisableDetectionUnusedEBSVolumes:
+        default: Disable detection for unused EBS Volumes?
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  IsControlTowerEnabled:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if control tower is enabled in your organization
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  AutomationEventBusName:
+    Description: Name of the Event Bus in the Automation account to which events are sent (see Automation Stack outputs)
+    Type: String
+    Default: <ProjectName>-eventbus
+  LogArchiveAccountId:
+    Type: String
+    Description: AWS Account ID of the Control Tower Log Archive account.
+  HomeRegion:
+    Type: String
+    Description: AWS Region
+  StepFunctionExecutorLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  CaptureExistingResourcesSfnARN:
+    Type: String
+    Description: Step Function ARN
+  AutoTaggerSfnARN:
+    Type: String
+    Description: Step Function ARN
+  EnableEBSDefaultEncryption:
+    Type: String
+    Description: Set to True if you want to enable EBS encryption by default
+    AllowedValues:
+    - true
+    - false
+  SlackBotTokenProvided:
+    Type: String
+    Description: Set to True if slack bot token has been provided for slack interactive alerts
+    AllowedValues:
+    - true
+    - false
+  EnableVpcFlowLogs:
+    Type: String
+    Description: Set to True if you want to enable VPC FlowLogs
+    AllowedValues:
+    - true
+    - false
+  FlowLogsDeliveryBucketPrefix:
+    Type: String
+    Description: Bucket Prefix
+  VpcFlowLogsTagKeyValue:
+    Type: String
+    Description: Tags Key-Value (e.g. Key=Value)
+  CreateManagementTrail:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create management CloudTrail Trail
+  CreateDataTrail:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create data CloudTrail Trail
+  AddSupportforPostDeploySSMAutomation:
+    Type: String
+    Description: Set to True if you want to enable Post Deploy SSM Automation Project
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIAMKeyPairAccessTracker:
+    Type: String
+    Description: Set to True if you want IAM Secret-Access KeyPair Access Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforCMDB:
+    Type: String
+    Description: Set to True if you want CMDB project deployed
+    AllowedValues:
+    - true
+    - false
+  EnableCostOptimizerRecommendations:
+    Type: String
+    Description: Set to True if you want to enable Cost Optimizer Recommendations for Daily, Weekly and Monthly Cost Reports
+    AllowedValues:
+    - true
+    - false
+  TagVPCs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for VPCs on creation
+  TagVPCUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag VPCs using SSM tag template if deployment is using Terraform
+  VPCTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagSubnets:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Subnets on creation
+  TagSubnetUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag Subnets using SSM tag template if deployment is using Terraform
+  SubnetTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEbsVolumes:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EBS Volumes on creation
+  TagEbsVolumeUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag EBS Volumes using SSM tag template if deployment is using Terraform
+  EbsVolumeTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEIPs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Elastic IPs on allocation
+  TagEIPUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag Elastic IPs using SSM tag template if deployment is using Terraform
+  EIPTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEbsSnapshots:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EBS Snapshots on creation
+  TagEbsSnapshotUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag EBS Snapshots using SSM tag template if deployment is using Terraform
+  EbsSnapshotTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagAMIs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for AMIs on creation
+  TagAMIUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag AMIs using SSM tag template if deployment is using Terraform
+  AMITagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEC2Instances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EC2 Instances on launch
+  TagEC2InstanceUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag EC2 Instances using SSM tag template if deployment is using Terraform
+  EC2InstanceTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEksClusters:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EKS Clusters on creation
+  TagEksClusterUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag EKS Clusters using SSM tag template if deployment is using Terraform
+  EksClusterTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagRDSClusterInstances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for RDS Clusters and Instances on creation
+  TagRDSClusterInstanceUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag RDS Clusters and Instances using SSM tag template if deployment is using Terraform
+  RDSClusterInstanceTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagEFS:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EFS on filesystem creation
+  TagEfsUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag EFS using SSM tag template if deployment is using Terraform
+  EFSTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagFSX:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for FSX on filesystem creation
+  TagFsxUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag FSX using SSM tag template if deployment is using Terraform
+  FSXTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagSecrets:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for SecretsManager on secret creation
+  TagSecretUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag SecretsManager Secret using SSM tag template if deployment is using Terraform
+  SecretTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagBackupPlans:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Backup Plans on creation
+  TagBackupPlanUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag Backup Plans using SSM tag template if deployment is using Terraform
+  BackupPlanTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  TagLoadbalancers:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for LoadBalancers on creation
+  TagLoadbalancerUsingTagTemplateForTerraformDeployment:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True of you want to auto-tag LoadBalancers using SSM tag template if deployment is using Terraform
+  LoadbalancerTagKeysForTagTemplateGeneration:
+    Type: String
+    Description: Comma Separated Tag Keys
+  EnableEC2InstanceConfigurator:
+    Type: String
+    Description: Set to True if you want to apply custom configurations through SSM Documents for EC2 Instances
+    AllowedValues:
+    - true
+    - false
+  SSMDocumentName:
+    Description: Name of SSM Document which is to be run automatically based on tags using State Manager
+    Type: String
+  TrackSSMDocumentAssociationFailures:
+    Type: String
+    Description: Set to True if you want to track failures for SSM Document Association
+    AllowedValues:
+    - true
+    - false
+  StateManagerMaxConcurrency:
+    Description: You can specify a number, for example 10, or a percentage of the target set, for example 10%
+    Type: String
+    Default: '50'
+  StateManagerMaxErrors:
+    Description: You can specify a number, for example 10, or a percentage of the target set, for example 10%
+    Type: String
+    Default: 10%
+  UnusedResourcesDetectionBypassTagKey:
+    Type: String
+    Description: Tag Key
+  DisableDetectionStoppedEC2Instances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for stopped EC2 Instances
+  DisableDetectionUnusedSecurityGroups:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for unused Security Groups
+  DisableDetectionUnusedEBSVolumes:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for unused EBS Volumes
+
+Conditions:
+  ControlTowerDisabled: !Equals
+  - !Ref IsControlTowerEnabled
+  - false
+
+  ManagementTrailCreation: !And
+  - !Equals [ !Ref CreateManagementTrail, true ]
+  - !Condition ControlTowerDisabled
+  DataTrailCreation: !And
+  - !Equals [ !Ref CreateDataTrail, true ]
+  - !Condition ControlTowerDisabled
+
+  CreateTrailResources: !Or
+  - !Condition ManagementTrailCreation
+  - !Condition DataTrailCreation
+
+  CreateSlackActionsCrossAccountRole: !Equals
+  - !Ref SlackBotTokenProvided
+  - true
+
+  TrackSSMAssociationFailures: !Equals
+  - !Ref TrackSSMDocumentAssociationFailures
+  - true
+
+  DeploySSMAutomationProject: !Equals
+  - !Ref AddSupportforPostDeploySSMAutomation
+  - true
+  DeployIAMKeyPairAccessTrackerProject: !Equals
+  - !Ref AddSupportforIAMKeyPairAccessTracker
+  - true
+  DeployCMDBProject: !Equals
+  - !Ref AddSupportforCMDB
+  - true
+  DefaultEBSEncryptionEnabled: !Equals
+  - !Ref EnableEBSDefaultEncryption
+  - true
+  FlowLogsEnabled: !Equals
+  - !Ref EnableVpcFlowLogs
+  - true
+  CostOptimizerEnabled: !Equals
+  - !Ref EnableCostOptimizerRecommendations
+  - true
+
+  IsEnabledUnusedResourcesDetection: !Or
+  - !Equals [ !Ref DisableDetectionStoppedEC2Instances, false ]
+  - !Equals [ !Ref DisableDetectionUnusedSecurityGroups, false ]
+  - !Equals [ !Ref DisableDetectionUnusedEBSVolumes, false ]
+
+  CreateCaptureExistingResourcesRule: !Or
+  - !Condition DeployIAMKeyPairAccessTrackerProject
+  - !Condition DeployCMDBProject
+
+  AutoTagVPCs: !Equals
+  - !Ref TagVPCs
+  - true
+  AutoTagSubnets: !Equals
+  - !Ref TagSubnets
+  - true
+  AutoTagEbsVolumes: !Equals
+  - !Ref TagEbsVolumes
+  - true
+  AutoTagEIPs: !Equals
+  - !Ref TagEIPs
+  - true
+  AutoTagEbsSnapshots: !Equals
+  - !Ref TagEbsSnapshots
+  - true
+  AutoTagAMIs: !Equals
+  - !Ref TagAMIs
+  - true
+  AutoTagFSX: !Equals
+  - !Ref TagFSX
+  - true
+  AutoTagSecrets: !Equals
+  - !Ref TagSecrets
+  - true
+  AutoTagBackupPlans: !Equals
+  - !Ref TagBackupPlans
+  - true
+  AutoTagLoadbalancers: !Equals
+  - !Ref TagLoadbalancers
+  - true
+  AutoTagEC2Instances: !Equals
+  - !Ref TagEC2Instances
+  - true
+  AutoTagEKSClusters: !Equals
+  - !Ref TagEksClusters
+  - true
+  AutoTagRDSClustersInstances: !Equals
+  - !Ref TagRDSClusterInstances
+  - true
+  AutoTagEFS: !Equals
+  - !Ref TagEFS
+  - true
+  CreateAutoTaggerResources0: !Or
+  - !Condition AutoTagVPCs
+  - !Condition AutoTagSubnets
+  - !Condition AutoTagEbsVolumes
+  - !Condition AutoTagEIPs
+  - !Condition AutoTagEbsSnapshots
+  - !Condition AutoTagAMIs
+  - !Condition AutoTagEC2Instances
+  - !Condition AutoTagEKSClusters
+  - !Condition AutoTagRDSClustersInstances
+  - !Condition AutoTagEFS
+  CreateAutoTaggerResources1: !Or
+  - !Condition AutoTagFSX
+  - !Condition AutoTagSecrets
+  - !Condition AutoTagBackupPlans
+  - !Condition AutoTagLoadbalancers
+
+  CreateAutoTaggerResources: !Or
+  - !Condition CreateAutoTaggerResources0
+  - !Condition CreateAutoTaggerResources1
+  CreateCommonResource: !Or
+  - !Condition DeployCMDBProject
+  - !Condition CreateAutoTaggerResources
+  - !Condition DeployIAMKeyPairAccessTrackerProject
+
+  CreateVpcTagTemplate: !Equals
+  - !Ref TagVPCUsingTagTemplateForTerraformDeployment
+  - true
+  CreateSubnetTagTemplate: !Equals
+  - !Ref TagSubnetUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEbsVolumeTagTemplate: !Equals
+  - !Ref TagEbsVolumeUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEIPTagTemplate: !Equals
+  - !Ref TagEIPUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEbsSnapshotTagTemplate: !Equals
+  - !Ref TagEbsSnapshotUsingTagTemplateForTerraformDeployment
+  - true
+  CreateAMITagTemplate: !Equals
+  - !Ref TagAMIUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEC2InstanceTagTemplate: !Equals
+  - !Ref TagEC2InstanceUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEksClusterTagTemplate: !Equals
+  - !Ref TagEksClusterUsingTagTemplateForTerraformDeployment
+  - true
+  CreateRdsTagTemplate: !Equals
+  - !Ref TagRDSClusterInstanceUsingTagTemplateForTerraformDeployment
+  - true
+  CreateEfsTagTemplate: !Equals
+  - !Ref TagEfsUsingTagTemplateForTerraformDeployment
+  - true
+  CreateFsxTagTemplate: !Equals
+  - !Ref TagFsxUsingTagTemplateForTerraformDeployment
+  - true
+  CreateSecretsTagTemplate: !Equals
+  - !Ref TagSecretUsingTagTemplateForTerraformDeployment
+  - true
+  CreateBackupPlanTagTemplate: !Equals
+  - !Ref TagBackupPlanUsingTagTemplateForTerraformDeployment
+  - true
+  CreateLoadBalancerTagTemplate: !Equals
+  - !Ref TagLoadbalancerUsingTagTemplateForTerraformDeployment
+  - true
+  ARNDocument:
+    Fn::Not:
+      - Fn::Equals:
+          - !Ref AutomationAccountId
+          - !Ref AWS::AccountId
+  ApplyEC2InstancesConfigurations: !Equals
+  - !Ref EnableEC2InstanceConfigurator
+  - true
+
+  CreateSSMDocumentResources: !And
+  - !Condition DeploySSMAutomationProject
+  - !Condition ApplyEC2InstancesConfigurations
+
+  CreateTagTemplateGeneratorResources0: !Or
+  - !Condition CreateVpcTagTemplate
+  - !Condition CreateSubnetTagTemplate
+  - !Condition CreateEbsVolumeTagTemplate
+  - !Condition CreateEIPTagTemplate
+  - !Condition CreateEbsSnapshotTagTemplate
+  - !Condition CreateAMITagTemplate
+  - !Condition CreateEC2InstanceTagTemplate
+  - !Condition CreateEksClusterTagTemplate
+  - !Condition CreateRdsTagTemplate
+  - !Condition CreateEfsTagTemplate
+  CreateTagTemplateGeneratorResources1: !Or
+  - !Condition CreateFsxTagTemplate
+  - !Condition CreateSecretsTagTemplate
+  - !Condition CreateBackupPlanTagTemplate
+  - !Condition CreateLoadBalancerTagTemplate
+
+  CreateTagTemplateGeneratorResources: !Or
+  - !Condition CreateTagTemplateGeneratorResources0
+  - !Condition CreateTagTemplateGeneratorResources1
+
+Resources:
+  CloudTrailLogGroup:
+    Condition: CreateTrailResources
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${ProjectName}/CloudtrailLogs"
+      RetentionInDays: 365
+
+  CloudTrailLogsBucket:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Condition: CreateTrailResources
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${AWS::AccountId}-${AWS::Region}-cloudtrail-logs"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudTrailLogsBucketPolicy:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Condition: CreateTrailResources
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailLogsBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+            - !GetAtt CloudTrailLogsBucket.Arn
+            - !Sub "${CloudTrailLogsBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: AWSCloudTrailBucketExistenceCheck
+            Effect: Allow
+            Principal:
+              Service: "cloudtrail.amazonaws.com"
+            Action: "s3:ListBucket"
+            Resource: !GetAtt CloudTrailLogsBucket.Arn
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: "cloudtrail.amazonaws.com"
+            Action: "s3:GetBucketAcl"
+            Resource: !GetAtt CloudTrailLogsBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: "cloudtrail.amazonaws.com"
+            Action: s3:PutObject
+            Resource: !Sub "${CloudTrailLogsBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+
+  CloudTrailRole:
+    DependsOn: CloudTrailLogsBucketPolicy
+    Condition: CreateTrailResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cloudtrail-role-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - cloudtrail.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudTrailRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudTrailAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:*:*:log-group:${CloudTrailLogGroup}:*"
+
+  Trail:
+    Condition: CreateTrailResources
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      EventSelectors:
+        - Fn::If:
+            - DataTrailCreation
+            - DataResources:
+                - Type: AWS::S3::Object
+                  Values:
+                    - "arn:aws:s3"
+              IncludeManagementEvents: false
+              ReadWriteType: WriteOnly
+            - !Ref AWS::NoValue
+        - Fn::If:
+            - ManagementTrailCreation
+            - IncludeManagementEvents: true
+              ReadWriteType: All
+            - !Ref AWS::NoValue
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: false
+      IsOrganizationTrail: false
+      S3BucketName: !Ref CloudTrailLogsBucket
+      S3KeyPrefix: !Ref AWS::AccountId
+      TrailName: !Sub "${ProjectName}-${AWS::AccountId}-trail"
+      CloudWatchLogsLogGroupArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CloudTrailLogGroup}:*"
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailRole.Arn
+
+  EventBusRuleChildEC2ResourcesManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-ec2-resources-manager"
+      Description: Trigger Automation EventBus whenever an EC2 Resource is created/modfied/deleted
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - ec2.amazonaws.com
+          eventName:
+            - AuthorizeSecurityGroupIngress
+            - ModifySecurityGroupRules
+            - ModifyNetworkInterfaceAttribute
+            - CreateSecurityGroup
+            - DeleteSecurityGroup
+            - RunInstances
+            - !If [ DeployCMDBProject, TerminateInstances, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, AssociateIamInstanceProfile, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, ReplaceIamInstanceProfileAssociation, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, DisassociateIamInstanceProfile, !Ref AWS::NoValue ]
+            - CreateVpc
+            - CreateSubnet
+            - CreateVolume
+            - AllocateAddress
+            - AssociateAddress
+            - CreateSnapshot
+            - ModifySnapshotAttribute
+            - ModifyImageAttribute
+            - CreateImage
+            - CreateTags
+            - DeleteTags
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'ec2-resources-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildIAMResourcesManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-iam-resources-manager"
+      Description: Trigger Automation EventBus whenever an IAM Resource is created/attached/modified/untagged/deleted
+      EventPattern:
+        source:
+          - aws.iam
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - iam.amazonaws.com
+          eventName:
+            - AttachRolePolicy
+            - PutRolePolicy
+            - UntagRole
+            - CreateUser
+            - UpdateLoginProfile
+            - DeleteUser
+            - CreateAccessKey
+            - !If [ DeployIAMKeyPairAccessTrackerProject, DeleteAccessKey, !Ref AWS::NoValue ]
+            - !If [ DeploySSMAutomationProject, DetachRolePolicy, !Ref AWS::NoValue ]
+            - CreateLoginProfile
+            - TagUser
+            - UntagUser
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'iam-resources-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildS3ResourceManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-s3-resource-manager"
+      Description: Trigger Automation EventBus whenever an S3 Resource is created/modified/deleted/tagged/untagged
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutBucketPolicy
+            - PutBucketAcl
+            - PutObjectAcl
+            - PutObject
+            - PutAccountPublicAccessBlock
+            - PutBucketTagging
+            - DeleteBucketTagging
+            - DeleteBucket
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 's3-resource-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildFsxCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-fsx-creation"
+      Description: Trigger Lambda whenever events is obtained in EventBus whenever an FSX FileSystem is created
+      EventPattern:
+        source:
+          - aws.fsx
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - fsx.amazonaws.com
+          eventName:
+            - CreateFileSystem
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'fsx-creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildEC2InstanceStateChange:
+    Condition: DeployCMDBProject
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-ec2-instance-state-change"
+      Description: Trigger Automation EventBus whenever an EC2 Instance's status is changed
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state: ["running", "stopping", "stopped"]
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'ec2-instance-state-change-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildRdsStateChangeManager:
+    Condition: DeployCMDBProject
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-rds-state-change-manager"
+      Description: Trigger Automation EventBus whenever an RDS DB Instance's/Cluster's state changes
+      EventPattern:
+        source:
+          - aws.rds
+        detail-type:
+          - RDS DB Instance Event
+          - RDS DB Cluster Event
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'rds-state-change-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildEfsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-efs-manager"
+      Description: Trigger Automation EventBus whenever an EFS FileSystem is created/deleted
+      EventPattern:
+        source:
+          - aws.elasticfilesystem
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - elasticfilesystem.amazonaws.com
+          eventName:
+            - CreateFileSystem
+            - !If [ DeployCMDBProject, DeleteFileSystem, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, TagResource, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, UntagResource, !Ref AWS::NoValue ]
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'efs-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildSecretsCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-secrets-creation"
+      Description: Trigger Lambda whenever events is obtained in EventBus whenever SecretsManager Secrets is created
+      EventPattern:
+        source:
+          - aws.secretsmanager
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - secretsmanager.amazonaws.com
+          eventName:
+            - CreateSecret
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'secret-creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildBackupPlanCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-backup-plan-creation"
+      Description: Trigger Lambda whenever event is obtained in EventBus whenever a Backup Plan is created
+      EventPattern:
+        source:
+          - aws.backup
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - backup.amazonaws.com
+          eventName:
+            - CreateBackupPlan
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'backup-plan-Creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildLoadBalancerCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-loadbalancer-creation"
+      Description: Trigger Lambda whenever event is obtained in EventBus when a LoadBalancer is created
+      EventPattern:
+        source:
+          - aws.elasticloadbalancing
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - elasticloadbalancing.amazonaws.com
+          eventName:
+            - CreateLoadBalancer
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'loadbalancer-creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildUserLogin:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-user-login"
+      Description: Trigger Lambda whenever event is obtained in EventBus when User Logs In
+      EventPattern:
+        source:
+          - aws.signin
+        detail-type:
+          - AWS Console Sign In via CloudTrail
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'user-login-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildEksClusterManager:
+    Condition: DeployCMDBProject
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-eks-cluster-manager"
+      Description: Trigger Automation EventBus whenever an EKS Cluster is created/deleted
+      EventPattern:
+        source:
+          - aws.eks
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - eks.amazonaws.com
+          eventName:
+            - CreateCluster
+            - DeleteCluster
+            - TagResource
+            - UntagResource
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'eks-cluster-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildRdsManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-rds-manager"
+      Description: Trigger Automation EventBus whenever an Rds Cluster/Instance is created/deleted
+      EventPattern:
+        source:
+          - aws.rds
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - rds.amazonaws.com
+          eventName:
+            - ModifyDBSnapshotAttribute
+            - ModifyDBClusterSnapshotAttribute
+            - !If [ DeployCMDBProject, CreateDBCluster, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, DeleteDBCluster, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, CreateDBInstance, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, DeleteDBInstance, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, AddTagsToResource, !Ref AWS::NoValue ]
+            - !If [ DeployCMDBProject, RemoveTagsFromResource, !Ref AWS::NoValue ]
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'rds-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildUnunsedResources:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-unused-resources"
+      Description: Trigger Automation EventBus whenever an unused Resource is detected
+      EventPattern:
+        detail-type:
+        - Detect Unused Resources
+        source:
+        - detect-unused-resources
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'detect-unused-resources-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildCaptureExistingResources:
+    Condition: CreateCaptureExistingResourcesRule
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-capture-existing-resources"
+      Description: Trigger Automation EventBus whenever event is obtained for capturing existing resources
+      EventPattern:
+        source:
+        - capture-existing-resources
+        detail-type:
+        - Capture Existing Resources
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'capture-existing-resources-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EventBusRuleChildSSMDocAssocFailureTracker:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-track-ssm-doc-assoc-failures"
+      Description: Trigger Automation EventBus whenever SSM Document Association fails for some reason
+      EventPattern:
+        source:
+          - aws.ssm
+        detail-type:
+          - EC2 State Manager Instance Association State Change
+        detail:
+          status:
+          - Success
+          - Failed
+        resources:
+        - Fn::Join:
+          - '/'
+          - - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document"
+            - !If [ARNDocument, !Sub "arn:aws:ssm:${AWS::Region}:${AutomationAccountId}:document/${SSMDocumentName}", !Ref SSMDocumentName]
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'track-ssm-doc-assoc-failures-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleChild.Arn
+        }
+      ]
+
+  EnableDefaultEBSEncryptionLambdaRole:
+    Condition: DefaultEBSEncryptionEnabled
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-enable-default-ebs-encryption-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: EC2WritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:GetEbsEncryptionByDefault
+            - ec2:EnableEbsEncryptionByDefault
+            - ec2:DisableEbsEncryptionByDefault
+            Resource: "*"
+
+  EnableDefaultEBSEncryptionLambda:
+    Condition: DefaultEBSEncryptionEnabled
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-enable-default-ebs-encryption"
+      Timeout: 30
+      Role: !GetAtt EnableDefaultEBSEncryptionLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import ast
+          import requests
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              data = {}
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              if event_type in ['Create']:
+                  method=getattr(client, 'enable_ebs_encryption_by_default')
+                  kwargs = {}
+                  try:
+                      print("...Enabling EBS Encryption by default")
+                      data = method(**kwargs)
+                      print({"API_Call": "ec2:EnableEbsEncryptionByDefault", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'disable_ebs_encryption_by_default')
+                  kwargs = {}
+                  try:
+                      print("...Disabling EBS Encryption by default")
+                      data = method()
+                      print({"API_Call": "ec2:DisableEbsEncryptionByDefault", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  EnableDefaultEBSEncryption:
+    Condition: DefaultEBSEncryptionEnabled
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ec2
+      ServiceToken: !GetAtt EnableDefaultEBSEncryptionLambda.Arn
+
+  EnableFlowLogsLambdaRole:
+    Condition: FlowLogsEnabled
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-enable-flowlogs-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: EC2WritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:DescribeVpcs
+            - ec2:CreateFlowLogs
+            - ec2:DeleteFlowLogs
+            Resource: "*"
+      - PolicyName: FlowLogsWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: FlowLogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:DeleteLogDelivery
+            Resource: "*"
+      - PolicyName: KMSDecryptPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: KMSAccess
+            Effect: Allow
+            Action: kms:Decrypt
+            Resource: '*'
+
+  EnableFlowLogsLambda:
+    Condition: FlowLogsEnabled
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-enable-flowlogs"
+      Timeout: 30
+      Role: !GetAtt EnableFlowLogsLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          LOG_ARCHIVE_ACCOUNT_ID: !Ref LogArchiveAccountId
+          HOME_REGION: !Ref HomeRegion
+          FLOW_LOGS_DELIVERY_BUCKET_PREFIX: !Ref FlowLogsDeliveryBucketPrefix
+          VPC_FLOW_LOGS_TAG_KEY_VALUE: !Ref VpcFlowLogsTagKeyValue
+          ACCOUNT_ID: !Ref AWS::AccountId
+      Code:
+        ZipFile: |
+          from os import getenv
+          import boto3
+          import json
+          import ast
+          import requests
+          LOG_ARCHIVE_ACCOUNT_ID = getenv('LOG_ARCHIVE_ACCOUNT_ID')
+          HOME_REGION = getenv('HOME_REGION')
+          FLOW_LOGS_DELIVERY_BUCKET_PREFIX = getenv('FLOW_LOGS_DELIVERY_BUCKET_PREFIX')
+          VPC_FLOW_LOGS_TAG_KEY_VALUE = getenv('VPC_FLOW_LOGS_TAG_KEY_VALUE')
+          ACCOUNT_ID = getenv('ACCOUNT_ID')
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              data = {}
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              flow_logs = []
+              if event_type in ['Create']:
+                  method=getattr(client, 'create_flow_logs')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      kwargs[key] = str(value)
+                  try:
+                      vpcs = client.describe_vpcs()
+                      kwargs['ResourceIds'] = [ vpc['VpcId'] for vpc in vpcs['Vpcs'] ]
+                      kwargs['TrafficType'] = (VPC_FLOW_LOGS_TAG_KEY_VALUE.split('=')[-1]).upper()
+                      kwargs['LogDestination'] = None
+                      if LOG_ARCHIVE_ACCOUNT_ID:
+                          kwargs['LogDestination'] = f"arn:aws:s3:::{FLOW_LOGS_DELIVERY_BUCKET_PREFIX}-{LOG_ARCHIVE_ACCOUNT_ID}-{HOME_REGION}"
+                      else:
+                          kwargs['LogDestination'] = f"arn:aws:s3:::{FLOW_LOGS_DELIVERY_BUCKET_PREFIX}-{ACCOUNT_ID}-{HOME_REGION}"
+                      if len(kwargs['ResourceIds']) > 0:
+                          print(f"...Creating VPC Flow Logs with args: {kwargs}")
+                          data = method(**kwargs)
+                          print({"API_Call": "ec2:CreateFlowLogs", "Response": data})
+                          flow_logs = data['FlowLogIds']
+                      status = 'SUCCESS'
+                      reason = ''
+                  except client.exceptions.ClientError as error:
+                      if error.response['Error']['Code'] in ['FlowLogAlreadyExists']:
+                          print("flowlog with the same configuration already exists")
+                      else:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_flow_logs')
+                  try:
+                      provider_arn = event['PhysicalResourceId']
+                      if provider_arn != 'EnableFlowLogs':
+                          kwargs = { "FlowLogIds": provider_arn.split(',') }
+                          if kwargs['FlowLogIds']:
+                              print(f"...Deleting VPC Flow logs with args: {kwargs}")
+                              data = method(**kwargs)
+                              print({"API_Call": "ec2:DeleteFlowLogs", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': ','.join(flow_logs) if flow_logs else event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  EnableFlowLogs:
+    Condition: FlowLogsEnabled
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ec2
+      ServiceToken: !GetAtt EnableFlowLogsLambda.Arn
+      KwArgs:
+        ResourceType: "VPC"
+        LogDestinationType: "s3"
+        LogFormat: "${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}"
+
+  EnableCostOptimizerLambdaRole:
+    Condition: CostOptimizerEnabled
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-enable-cost-optimizer-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: CostOptimizerReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CostOptimizerAccess
+            Effect: Allow
+            Action:
+            - compute-optimizer:GetEnrollmentStatus
+            - compute-optimizer:UpdateEnrollmentStatus
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            - iam:DeleteServiceLinkedRole
+            Resource: '*'
+
+  EnableCostOptimizerLambda:
+    Condition: CostOptimizerEnabled
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-enable-cost-optimizer"
+      Timeout: 30
+      Role: !GetAtt EnableCostOptimizerLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import ast
+          import requests
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              if event_type in ['Create']:
+                  method=getattr(client, 'update_enrollment_status')
+                  try:
+                      status = get_enrollment_status(client)
+                      print(f"enrollment status for this account is {status}")
+                      while status not in ['Active']:
+                          print("...Activating the enrollment status for this account")
+                          response = method(status='Active')
+                          status = response['status']
+                          print({"ApiCall": "compute-optimizer:UpdateEnrollmentStatus", "Response": response})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'update_enrollment_status')
+                  try:
+                      status = get_enrollment_status(client)
+                      print(f"enrollment status for this account is {status}")
+                      if status != 'Inactive':
+                          print("...Deactivating the enrollment status for this account")
+                          response = method(status='Inactive')
+                          print({"ApiCall": "compute-optimizer:UpdateEnrollmentStatus", "Response": response})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_enrollment_status(client):
+              status = ''
+              try:
+                  response = client.get_enrollment_status()
+                  if 'status' in response:
+                      status = response['status']
+              except Exception as error:
+                  print(str(error))
+              return status
+
+  EnableCostOptimizer:
+    Condition: CostOptimizerEnabled
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: compute-optimizer
+      ServiceToken: !GetAtt EnableCostOptimizerLambda.Arn
+
+  SSMTagTemplateGeneratorLambdaRole:
+    Condition: CreateTagTemplateGeneratorResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ssm-tag-temp-generator-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SSMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action:
+            - ssm:PutParameter
+            - ssm:DeleteParameter
+            Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/*
+
+  SSMTagTemplateGeneratorLambda:
+    Condition: CreateTagTemplateGeneratorResources
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-ssm-tag-template-generator"
+      Timeout: 300
+      Role: !GetAtt SSMTagTemplateGeneratorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import ast
+          import time
+          import requests
+          MAX_RETRY_ATTEMPTS = 5
+          DELAY_SECONDS = 3
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              parameter_name = None
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'put_parameter')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          if key == 'Value':
+                              tag_template = {}
+                              tag_keys = value.replace(' ', '').split(',')
+                              for tag_key in tag_keys:
+                                  tag_template[tag_key] = f"< {tag_key.upper()} >"
+                              kwargs[key] = json.dumps(tag_template)
+                          else:
+                              kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  parameter_name = kwargs['Name']
+                  retry_attempts = 0
+                  delay = DELAY_SECONDS
+                  while retry_attempts < MAX_RETRY_ATTEMPTS:
+                      try:
+                          print(f"...Creating SSM parameter named {parameter_name} with args: {kwargs}")
+                          data = method(**kwargs)
+                          print({"API_Call": "ssm:PutParameter", "Response": data})
+                          status = 'SUCCESS'
+                          reason = ''
+                          break
+                      except client.exceptions.ClientError as error:
+                          if retry_attempts < MAX_RETRY_ATTEMPTS:
+                              retry_attempts += 1
+                              print(f"{str(error)}. Retrying in {delay} seconds...")
+                              time.sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          status = 'FAILED'
+                          reason = str(error)
+                          data = {}
+                          break
+                      except Exception as e:
+                          status = 'FAILED'
+                          reason = str(e)
+                          data = {}
+                          break
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_parameter')
+                  parameter_name = event['PhysicalResourceId']
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      print(f"...Deleting SSM parameter named {parameter_name}")
+                      data = method(Name=parameter_name)
+                      print({"API_Call": "ssm:DeleteParameter", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except client.exceptions.ParameterNotFound:
+                      print(f"[INFO] SSM paramater named {parameter_name} not found")
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': parameter_name,
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  VPCSSMTagTemplateGenerator:
+    Condition: CreateVpcTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/VPC_TAG_TEMPLATE"
+        Description: Tags Template for VPCs to be used for Terraform Deployments
+        Value: !Ref VPCTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  SubnetSSMTagTemplateGenerator:
+    Condition: CreateSubnetTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/SUBNET_TAG_TEMPLATE"
+        Description: Tags Template for Subnets to be used for Terraform Deployments
+        Value: !Ref SubnetTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EbsVolumeSSMTagTemplateGenerator:
+    Condition: CreateEbsVolumeTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/EBS_VOLUME_TAG_TEMPLATE"
+        Description: Tags Template for EBS Volumes to be used for Terraform Deployments
+        Value: !Ref EbsVolumeTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EIPSSMTagTemplateGenerator:
+    Condition: CreateEIPTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/ELASTIC_IP_TAG_TEMPLATE"
+        Description: Tags Template for Elastic IPs to be used for Terraform Deployments
+        Value: !Ref EIPTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EbsSnapshotSSMTagTemplateGenerator:
+    Condition: CreateEbsSnapshotTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/EBS_SNAPSHOT_TAG_TEMPLATE"
+        Description: Tags Template for EBS Snapshots to be used for Terraform Deployments
+        Value: !Ref EbsSnapshotTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  AMISSMTagTemplateGenerator:
+    Condition: CreateAMITagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/AMI_TAG_TEMPLATE"
+        Description: Tags Template for AMIs to be used for Terraform Deployments
+        Value: !Ref AMITagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EC2InstanceSSMTagTemplateGenerator:
+    Condition: CreateEC2InstanceTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/EC2_INSTANCE_TAG_TEMPLATE"
+        Description: Tags Template for EC2 Instances to be used for Terraform Deployments
+        Value: !Ref EC2InstanceTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EksClusterSSMTagTemplateGenerator:
+    Condition: CreateEksClusterTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/EKS_CLUSTER_TAG_TEMPLATE"
+        Description: Tags Template for EKS Clusters to be used for Terraform Deployments
+        Value: !Ref EksClusterTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  RdsClusterInstancesSSMTagTemplateGenerator:
+    Condition: CreateRdsTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/RDS_CLUSTER_INSTANCES_TAG_TEMPLATE"
+        Description: Tags Template for RDS Clusters and Instances to be used for Terraform Deployments
+        Value: !Ref RDSClusterInstanceTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EfsSSMTagTemplateGenerator:
+    Condition: CreateEfsTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/EFS_TAG_TEMPLATE"
+        Description: Tags Template for EFS to be used for Terraform Deployments
+        Value: !Ref EFSTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  FsxSSMTagTemplateGenerator:
+    Condition: CreateFsxTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/FSX_TAG_TEMPLATE"
+        Description: Tags Template for FSX to be used for Terraform Deployments
+        Value: !Ref FSXTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  SecretsSSMTagTemplateGenerator:
+    Condition: CreateSecretsTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/SECRETS_TAG_TEMPLATE"
+        Description: Tags Template for SecretsManager Secrets to be used for Terraform Deployments
+        Value: !Ref SecretTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  BackupPlanSSMTagTemplateGenerator:
+    Condition: CreateBackupPlanTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/BACKUP_PLAN_TAG_TEMPLATE"
+        Description: Tags Template for Backup Plans to be used for Terraform Deployments
+        Value: !Ref BackupPlanTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  LoadBalancerSSMTagTemplateGenerator:
+    Condition: CreateLoadBalancerTagTemplate
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMTagTemplateGeneratorLambda.Arn
+      KwArgs:
+        Name: !Sub "/${ProjectName}/LOADBALANCER_TAG_TEMPLATE"
+        Description: Tags Template for LoadBalancers to be used for Terraform Deployments
+        Value: !Ref LoadbalancerTagKeysForTagTemplateGeneration
+        Type: String
+        Overwrite: "True"
+        Tier: Standard
+
+  EventBusRoleChild:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-child-send-automation-events-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: child-send-automation-events-policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SendEvents
+            Effect: Allow
+            Action:
+            - events:PutEvents
+            Resource: !Sub arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}
+
+  DefaultHostManagementConfigurationCustom:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 30
+      FunctionName: !Sub "${ProjectName}-ssm-default-host-management-config-enabler"
+      Role: !GetAtt DefaultHostManagementConfigurationCustomRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import ast
+          import requests
+          def get_ssm_role_name(role_name):
+              role_name = role_name.split("/")[-1]
+              iam = boto3.client("iam")
+              response = {}
+              try:
+                  response = iam.get_role(RoleName=role_name)
+              except iam.exceptions.NoSuchEntityException:
+                  print("Creating new IAM Role for SSM...")
+                  try:
+                      response = iam.create_role(
+                          RoleName=role_name,
+                          AssumeRolePolicyDocument=json.dumps({"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":"ssm.amazonaws.com"},"Action":"sts:AssumeRole"}]}),
+                      )
+                      iam.attach_role_policy(
+                          RoleName=response['Role']['RoleName'],
+                          PolicyArn='arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy'
+                      )
+                  except iam.exceptions.EntityAlreadyExists:
+                      print("IAM Role for SSM already exists")
+                      response = iam.get_role(RoleName=role_name)
+              except Exception as error:
+                  print(f"[Exception] {str(error)}")
+              return response['Role']['RoleName']
+          def delete_ssm_role(role_name):
+              role_name = role_name.split("/")[-1]
+              iam = boto3.client("iam")
+              try:
+                  iam.detach_role_policy(
+                    RoleName=role_name,
+                    PolicyArn='arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy'
+                  )
+                  iam.delete_role(RoleName=role_name)
+              except Exception as error:
+                  print(f"[Exception] {str(error)}")
+                  return False
+              return True
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              data = {}
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              if event_type in ['Create']:
+                  method=getattr(client, 'update_service_setting')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  provider_arn = kwargs['SettingId']
+                  try:
+                      kwargs['SettingValue'] = get_ssm_role_name(kwargs['SettingValue'])
+                      print(f"...Enabling Default Host Management Configuration for SSM with args: {kwargs}")
+                      data = method(**kwargs)
+                      print({"API_Call": "ssm:UpdateServiceSetting", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  method=getattr(client, 'update_service_setting')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      kwargs['SettingValue'] = get_ssm_role_name(kwargs['SettingValue'])
+                      print(f"...Enabling Default Host Management Configuration for SSM with args: {kwargs}")
+                      data = method(**kwargs)
+                      print({"API_Call": "ssm:UpdateServiceSetting", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'reset_service_setting')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      if not delete_ssm_role(kwargs['SettingValue']):
+                          print(f"[ERROR] Could not delete IAM Role for SSM")
+                      print(f"...Disabling Default Host Management Configuration for SSM with setting ID: {kwargs['SettingId']}")
+                      data = method(SettingId=kwargs['SettingId'])
+                      print({"API_Call": "ssm:ResetServiceSetting", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  DefaultHostManagementConfigurationCustomRole:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SSMReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action:
+            - ssm:UpdateServiceSetting
+            - ssm:ResetServiceSetting
+            - ssm:GetServiceSetting
+            Resource: '*'
+      - PolicyName: IAMReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:GetRole
+            - iam:CreateRole
+            - iam:DeleteRole
+            - iam:AttachRolePolicy
+            - iam:DetachRolePolicy
+            - iam:PassRole
+            Resource: '*'
+
+  EnableDefaultHostManagementConfiguration:
+    Condition: DeploySSMAutomationProject
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt DefaultHostManagementConfigurationCustom.Arn
+      KwArgs:
+        SettingId: '/ssm/managed-instance/default-ec2-instance-management-role'
+        SettingValue: 'service-role/AWSSystemsManagerDefaultEC2InstanceManagementRole'
+
+  TagExistingVPCsForFlowLogsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-tag-existing-vpcs-for-flowlogs"
+      Timeout: 30
+      Role: !GetAtt TagExistingVPCsForFlowLogsLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import json
+          import ast
+          import requests
+          from botocore.exceptions import ClientError
+          def delete_tags(vpc_ids, key, value):
+              client = boto3.client('ec2')
+              try:
+                  client.delete_tags(
+                      Resources=vpc_ids,
+                      Tags=[{
+                          'Key': key,
+                          'Value': value
+                      }]
+                  )
+              except Exception as error:
+                  print(f"[Exception] {str(error)}")
+                  return False
+              return True
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              data = {}
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              provider_arn = None
+              if event_type in ['Create']:
+                  method=getattr(client, 'create_tags')
+                  kwargs = {}
+                  kwargs['Tags'] = {}
+                  for key, value in props['KwArgs'].items():
+                      if 'VpcFlowLogsTagKeyValue' == key and '=' in value:
+                          tags_key_value = value.split('=')
+                          kwargs['Tags'] = [{ 'Key': tags_key_value[0], 'Value': tags_key_value[1] }]
+                  provider_arn = '${VpcFlowLogsTagKeyValue}'
+                  try:
+                      vpcs = client.describe_vpcs()
+                      kwargs['Resources'] = [ vpc['VpcId'] for vpc in vpcs['Vpcs'] ]
+                      if len(kwargs['Resources']) > 0:
+                          print(f"...Creating Tags for VPCs with args: {kwargs}")
+                          data = method(**kwargs)
+                          print({"API_Call": "ec2:CreateTags", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  method=getattr(client, 'create_tags')
+                  provider_arn = event['PhysicalResourceId']
+                  kwargs = {}
+                  kwargs['Tags'] = {}
+                  for key, value in props['KwArgs'].items():
+                      if 'VpcFlowLogsTagKeyValue' == key and '=' in value:
+                          tags_key_value = value.split('=')
+                          kwargs['Tags'] = [{ 'Key': tags_key_value[0], 'Value': tags_key_value[1] }]
+                  try:
+                      vpcs = client.describe_vpcs()
+                      kwargs['Resources'] = [ vpc['VpcId'] for vpc in vpcs['Vpcs'] ]
+                      if len(kwargs['Resources']) > 0:
+                          if '=' in provider_arn:
+                              tags_key_value = provider_arn.split('=')
+                              if not delete_tags(kwargs['Resources'], tags_key_value[0], tags_key_value[1]):
+                                  print("[ERROR] Could not delete older tags from VPCs")
+                          print(f"...Creating Tags for VPCs with args: {kwargs}")
+                          data = method(**kwargs)
+                          print({"API_Call": "ec2:CreateTags", "Response": data})
+                      provider_arn = '${VpcFlowLogsTagKeyValue}'
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_tags')
+                  provider_arn = event['PhysicalResourceId']
+                  kwargs = {}
+                  kwargs['Tags'] = {}
+                  for key, value in props['KwArgs'].items():
+                      if 'VpcFlowLogsTagKeyValue' == key and '=' in value:
+                          tags_key_value = value.split('=')
+                          kwargs['Tags'] = [{ 'Key': tags_key_value[0], 'Value': tags_key_value[1] }]
+                  try:
+                      vpcs = client.describe_vpcs()
+                      kwargs['Resources'] = [ vpc['VpcId'] for vpc in vpcs['Vpcs'] ]
+                      if len(kwargs['Resources']) > 0:
+                          print(f"...Deleting Tags for VPCs with args: {kwargs}")
+                          data = method(**kwargs)
+                          print({"API_Call": "ec2:DeleteTags", "Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': provider_arn if provider_arn is not None else event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  TagExistingVPCsForFlowLogsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: EC2ReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:DescribeVpcs
+            - ec2:CreateTags
+            - ec2:DeleteTags
+            Resource: '*'
+
+  TagExistingVPCsForFlowLogs:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ec2
+      ServiceToken: !GetAtt TagExistingVPCsForFlowLogsLambda.Arn
+      KwArgs:
+        VpcFlowLogsTagKeyValue: !Ref VpcFlowLogsTagKeyValue
+
+  CrossAccountLambdaFunctionTriggererLambdaRole:
+    Condition: CreateCommonResource
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: LambdaInvokePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LambdaAccess
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource: !Ref StepFunctionExecutorLambdaARN
+
+  CrossAccountLambdaFunctionTriggererLambda:
+    Condition: CreateCommonResource
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-cross-account-lambda-function-triggerer"
+      Timeout: 30
+      Role: !GetAtt CrossAccountLambdaFunctionTriggererLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          HOME_REGION: !Ref HomeRegion
+      Code:
+        ZipFile: |
+          import boto3
+          from os import getenv
+          import json
+          import ast
+          import requests
+          HOME_REGION = getenv('HOME_REGION')
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              old_props = event['OldResourceProperties'] if 'OldResourceProperties' in event else {}
+              client=boto3.client(props['Service'], region_name=HOME_REGION)
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              if event_type in ['Create', 'Update']:
+                  method=getattr(client, 'invoke')
+                  kwargs = {}
+                  trigger_lambda = False if old_props else True
+                  is_capture_existing_resources_sfn = False
+                  is_auto_tagger_sfn = False
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          if key == 'Payload':
+                              if 'capture-existing-resources' in value['KwArgs']['stateMachineArn']:
+                                  is_capture_existing_resources_sfn = True
+                              elif 'auto-tagger' in value['KwArgs']['stateMachineArn']:
+                                  is_auto_tagger_sfn = True
+                              kwargs[key] = json.dumps(value).encode('utf-8')
+                          else:
+                              kwargs[key] = ast.literal_eval(value)
+                      except Exception:
+                          kwargs[key] = value
+                  old_kwargs = {}
+                  if old_props:
+                      for key, value in old_props['KwArgs'].items():
+                          try:
+                              old_kwargs[key] = ast.literal_eval(value)
+                          except Exception:
+                              old_kwargs[key] = value
+                      if is_capture_existing_resources_sfn:
+                          if old_kwargs['AddSupportforCMDB'] == 'false' and kwargs['AddSupportforCMDB'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['AddSupportforIAMKeyPairAccessTracker'] == 'false' and kwargs['AddSupportforIAMKeyPairAccessTracker'] == 'true':
+                              trigger_lambda = True
+                      if is_auto_tagger_sfn:
+                          if old_kwargs['TagVPCs'] == 'false' and kwargs['TagVPCs'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagSubnets'] == 'false' and kwargs['TagSubnets'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEbsVolumes'] == 'false' and kwargs['TagEbsVolumes'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEIPs'] == 'false' and kwargs['TagEIPs'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEbsSnapshots'] == 'false' and kwargs['TagEbsSnapshots'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagAMIs'] == 'false' and kwargs['TagAMIs'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEC2Instances'] == 'false' and kwargs['TagEC2Instances'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEksClusters'] == 'false' and kwargs['TagEksClusters'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagRDSClusterInstances'] == 'false' and kwargs['TagRDSClusterInstances'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagEFS'] == 'false' and kwargs['TagEFS'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagFSX'] == 'false' and kwargs['TagFSX'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagSecrets'] == 'false' and kwargs['TagSecrets'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagBackupPlans'] == 'false' and kwargs['TagBackupPlans'] == 'true':
+                              trigger_lambda = True
+                          if old_kwargs['TagLoadbalancers'] == 'false' and kwargs['TagLoadbalancers'] == 'true':
+                              trigger_lambda = True
+                  try:
+                      if trigger_lambda:
+                          lambda_args = {
+                              'FunctionName': kwargs['FunctionName'],
+                              'InvocationType': kwargs['InvocationType'],
+                              'Payload': kwargs['Payload']
+                          }
+                          print(f"Triggering cross account Lambda Function for {'capture-existing-resources' if is_capture_existing_resources_sfn else 'autotagger'} SFN with args: {lambda_args}")
+                          data = method(**lambda_args)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  CaptureExistingResources:
+    Condition: CreateCommonResource
+    DependsOn: CrossAccountRole
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: lambda
+      ServiceToken: !GetAtt CrossAccountLambdaFunctionTriggererLambda.Arn
+      KwArgs:
+        FunctionName: !Ref StepFunctionExecutorLambdaARN
+        InvocationType: 'Event'
+        Payload:
+          Service: stepfunctions
+          KwArgs:
+            stateMachineArn: !Ref CaptureExistingResourcesSfnARN
+            input:
+              ExecutionType: AUTOMATED
+              Accounts:
+              - AccountId: !Ref AWS::AccountId
+                Regions:
+                - !Ref AWS::Region
+        AddSupportforIAMKeyPairAccessTracker: !Ref AddSupportforIAMKeyPairAccessTracker
+        AddSupportforCMDB: !Ref AddSupportforCMDB
+
+  AutoTagResources:
+    Condition: CreateCommonResource
+    DependsOn: CrossAccountRole
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: lambda
+      ServiceToken: !GetAtt CrossAccountLambdaFunctionTriggererLambda.Arn
+      KwArgs:
+        FunctionName: !Ref StepFunctionExecutorLambdaARN
+        InvocationType: 'Event'
+        Payload:
+          Service: stepfunctions
+          KwArgs:
+            stateMachineArn: !Ref AutoTaggerSfnARN
+            input:
+              ExecutionType: AUTOMATED
+              Accounts:
+              - AccountId: !Ref AWS::AccountId
+                Regions:
+                - !Ref AWS::Region
+        TagVPCs: !Ref TagVPCs
+        TagSubnets: !Ref TagSubnets
+        TagEbsVolumes: !Ref TagEbsVolumes
+        TagEIPs: !Ref TagEIPs
+        TagEbsSnapshots: !Ref TagEbsSnapshots
+        TagAMIs: !Ref TagAMIs
+        TagFSX: !Ref TagFSX
+        TagSecrets: !Ref TagSecrets
+        TagBackupPlans: !Ref TagBackupPlans
+        TagLoadbalancers: !Ref TagLoadbalancers
+        TagEC2Instances: !Ref TagEC2Instances
+        TagEksClusters: !Ref TagEksClusters
+        TagRDSClusterInstances: !Ref TagRDSClusterInstances
+        TagEFS: !Ref TagEFS
+
+  DetectUnusedResourcesRole:
+    Condition: IsEnabledUnusedResourcesDetection
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: EC2ReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:DescribeInstances
+            - ec2:DescribeSecurityGroups
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DescribeVolumes
+            Resource: '*'
+      - PolicyName: EventsWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EventsAccess
+            Effect: Allow
+            Action:
+            - events:PutEvents
+            Resource: '*'
+      - PolicyName: CloudTrailReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudTrailAccess
+            Effect: Allow
+            Action:
+            - cloudtrail:LookupEvents
+            Resource: '*'
+
+  DetectUnusedResources:
+    Condition: IsEnabledUnusedResourcesDetection
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function that detects unused resources daily and sends alerts
+      FunctionName: !Sub "${ProjectName}-detect-unused-resources"
+      Handler: index.lambda_handler
+      Runtime: python3.11
+      Timeout: 900
+      MemorySize: 128
+      Role: !GetAtt DetectUnusedResourcesRole.Arn
+      Environment:
+        Variables:
+          UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY: !Ref UnusedResourcesDetectionBypassTagKey
+          DISABLE_DETECTION_STOPPED_EC2_INSTANCES: !Ref DisableDetectionStoppedEC2Instances
+          DISABLE_DETECTION_UNUSED_SECURITY_GROUPS: !Ref DisableDetectionUnusedSecurityGroups
+          DISABLE_DETECTION_UNUSED_EBS_VOLUMES: !Ref DisableDetectionUnusedEBSVolumes
+      Code:
+        ZipFile: |
+          import json
+          import re
+          from os import getenv
+          from time import sleep
+          import datetime
+          from dateutil.parser import parse
+          import boto3
+          from botocore.exceptions import ClientError
+
+          MAX_RETRY_ATTEMPTS = 5
+          DELAY_SECONDS = 3
+          CLOUDTRAIL_THROTTLE_PERIOD = 0.5
+          UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY = getenv('UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY')
+          DISABLE_DETECTION_STOPPED_EC2_INSTANCES = json.loads(getenv('DISABLE_DETECTION_STOPPED_EC2_INSTANCES'))
+          DISABLE_DETECTION_UNUSED_SECURITY_GROUPS = json.loads(getenv('DISABLE_DETECTION_UNUSED_SECURITY_GROUPS'))
+          DISABLE_DETECTION_UNUSED_EBS_VOLUMES = json.loads(getenv('DISABLE_DETECTION_UNUSED_EBS_VOLUMES'))
+          def lambda_handler(event, context):
+              ec2_client = boto3.client('ec2')
+              cloudtrail_client = boto3.client('cloudtrail')
+              events = boto3.client('events')
+              if not DISABLE_DETECTION_STOPPED_EC2_INSTANCES:
+                  stopped_instances = get_stopped_instances(ec2_client)
+                  print("...Sending events for Unused EC2 Instances")
+                  for instance in stopped_instances:
+                      instance['ResourceType'] = 'EC2Instance'
+                      instance['CreatedBy'], instance['CreatedAt'] = get_resource_details(cloudtrail_client, 'RunInstances', instance['InstanceId'])
+                      response = events.put_events(
+                          Entries=[{
+                              'Source': 'detect-unused-resources',
+                              'DetailType': 'Detect Unused Resources',
+                              'Detail': json.dumps(instance)
+                          }]
+                      )
+                      print({"API_Call": "events:PutEvents", "Data": json.dumps(instance), "Response": response})
+              if not DISABLE_DETECTION_UNUSED_SECURITY_GROUPS:
+                  unused_security_groups = get_unused_sgs(ec2_client)
+                  print("...Sending events for Unused Security Groups")
+                  for sg in unused_security_groups:
+                      sg['ResourceType'] = 'SecurityGroup'
+                      sg['CreatedBy'], sg['CreatedAt'] = get_resource_details(cloudtrail_client, 'CreateSecurityGroup', sg['GroupId'])
+                      response = events.put_events(
+                          Entries=[{
+                              'Source': 'detect-unused-resources',
+                              'DetailType': 'Detect Unused Resources',
+                              'Detail': json.dumps(sg)
+                          }]
+                      )
+                      print({"API_Call": "events:PutEvents", "Data": json.dumps(sg), "Response": response})
+              if not DISABLE_DETECTION_UNUSED_EBS_VOLUMES:
+                  available_volumes = get_avaliable_volumes(ec2_client)
+                  print("...Sending events for available EBS Volumes")
+                  for vol in available_volumes:
+                      vol['ResourceType'] = 'EBSVolume'
+                      vol['CreatedBy'], vol['CreatedAt'] = get_resource_details(cloudtrail_client, 'CreateVolume', vol['VolumeId'])
+                      response = events.put_events(
+                          Entries=[{
+                              'Source': 'detect-unused-resources',
+                              'DetailType': 'Detect Unused Resources',
+                              'Detail': json.dumps(vol)
+                          }]
+                      )
+                      print({"API_Call": "events:PutEvents", "Data": json.dumps(vol), "Response": response})
+          def get_stopped_instances(client):
+              stopped_instances = []
+              try:
+                  reservations = client.describe_instances()['Reservations']
+                  for reservation in reservations:
+                      for instance in reservation['Instances']:
+                          if 'State' in instance and instance['State']['Name'] == 'stopped':
+                              skip_resource = False
+                              if 'Tags' in instance:
+                                  for tag in instance['Tags']:
+                                      if tag['Key'] == UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY:
+                                          skip_resource = True
+                              last_stopped_at = get_last_stopped_at_timestamp(instance['StateTransitionReason'])
+                              difference = datetime.datetime.now(datetime.timezone.utc) - last_stopped_at
+                              hour_diff = int(difference.total_seconds() / 3600)
+                              if hour_diff >= 120 and not skip_resource:
+                                  stopped_instances.append({'InstanceId': instance['InstanceId'], 'LastStoppedAt': get_cst_cdt_date(last_stopped_at)})
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return stopped_instances
+          def get_resource_details(client, event_name, resource_id):
+              created_by = ''
+              created_at = ''
+              retry_attempts = 0
+              delay = DELAY_SECONDS
+              next_token = ''
+              base_kwargs = {
+                  'LookupAttributes': [{
+                      'AttributeKey': 'ResourceName',
+                      'AttributeValue': resource_id
+                  }]
+              }
+              while retry_attempts < MAX_RETRY_ATTEMPTS:
+                  try:
+                      while next_token is not None:
+                          kwargs = base_kwargs.copy()
+                          if next_token != '':
+                              kwargs.update({'NextToken': next_token})
+                          response = client.lookup_events(**kwargs)
+                          for trail_event in response['Events']:
+                              if trail_event['EventName'] == event_name:
+                                  if 'Username' in trail_event and 'EventTime' in trail_event:
+                                      created_by = trail_event['Username']
+                                      created_at = get_cst_cdt_date(trail_event['EventTime'])
+                                  break
+                          sleep(CLOUDTRAIL_THROTTLE_PERIOD)
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                      break
+                  except client.exceptions.ClientError as error:
+                      if retry_attempts < MAX_RETRY_ATTEMPTS:
+                          retry_attempts += 1
+                          LOGGER.info("%s. Retrying in %s seconds...", str(error), delay)
+                          time.sleep(delay)
+                          delay *= 2
+                          continue
+                      raise error
+              return created_by, created_at
+          def get_unused_sgs(client):
+              unused_group_ids = []
+              try:
+                  security_groups = client.describe_security_groups()['SecurityGroups']
+                  for sg in security_groups:
+                      skip_resource = False
+                      if 'Tags' in sg:
+                          for tag in sg['Tags']:
+                              if tag['Key'] == UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY:
+                                  skip_resource = True
+                      if not skip_resource:
+                          result = client.describe_network_interfaces(Filters=[{'Name': 'group-id','Values': [sg['GroupId']]}])['NetworkInterfaces']
+                          if len(result) == 0 and sg['GroupName'] != 'default':
+                              unused_group_ids.append({'GroupId': sg['GroupId'], 'GroupName': sg['GroupName']})
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return unused_group_ids
+          def get_avaliable_volumes(client):
+              avail_volumes = []
+              try:
+                  volumes = client.describe_volumes()['Volumes']
+                  for vol in volumes:
+                      skip_resource = False
+                      if 'Tags' in vol:
+                          for tag in vol['Tags']:
+                              if tag['Key'] == UNUSED_RESOURCES_DETECTION_BYPASS_TAG_KEY:
+                                  skip_resource = True
+                      if vol['State'] == 'available' and not skip_resource:
+                          avail_volumes.append({'VolumeId': vol['VolumeId']})
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return avail_volumes
+          def get_last_stopped_at_timestamp(timestamp_str):
+              last_stopped_at = ''
+              re_match = re.search(
+                  "([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [A-Z]{3})",
+                  timestamp_str)
+              if re_match is not None:
+                  last_stopped_at = parse(re_match.group(0))
+              return last_stopped_at.astimezone(datetime.timezone.utc)
+          def get_cst_cdt_date(timestamp: datetime.datetime):
+              cst_offset = datetime.timedelta(hours=-6)
+              cdt_offset = datetime.timedelta(hours=-5)
+              is_dst = bool(timestamp.dst())
+              timezone_abbreviation = ''
+              if is_dst:
+                  cst_cdt_time = timestamp + cdt_offset
+                  timezone_abbreviation = 'CDT'
+              else:
+                  cst_cdt_time = timestamp + cst_offset
+                  timezone_abbreviation = 'CST'
+              return cst_cdt_time.strftime(f'%b %d, %Y %I:%M %p {timezone_abbreviation}')
+
+  DetectUnusedResourcesLambdaInvokePermission:
+    Condition: IsEnabledUnusedResourcesDetection
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DetectUnusedResources
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+
+  UnusedResourcesDetectorCronRule:
+    Condition: IsEnabledUnusedResourcesDetection
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      Name: !Sub "${ProjectName}-unused-resources-detector"
+      ScheduleExpression: cron(00 23 ? * * *)
+      State: ENABLED
+      Targets:
+        - Id: trigger-detect-unused-resources-lambda
+          Arn: !GetAtt DetectUnusedResources.Arn
+
+  SlackActionsCrossAccountRolePermissionBoundary:
+    Condition: CreateSlackActionsCrossAccountRole
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      Description: Permission boundary for Slack Actions Cross Account Role
+      ManagedPolicyName: !Sub "${ProjectName}-slack-cross-account-pb-${AWS::Region}"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowTaggingAndModification
+            Effect: Allow
+            Action:
+            - backup:TagResource
+            - ec2:CreateTags
+            - elasticfilesystem:CreateTags
+            - eks:TagResource
+            - elasticloadbalancing:AddTags
+            - fsx:TagResource
+            - rds:AddTagsToResource
+            - secretsmanager:TagResource
+            - ec2:ReleaseAddress
+            - ec2:RevokeSecurityGroupIngress
+            - ec2:ModifyImageAttribute
+            - ec2:ModifySnapshotAttribute
+            - iam:GetRole
+            - iam:DeleteUser
+            - iam:DeleteAccessKey
+            - iam:DetachRolePolicy
+            - iam:DeleteRolePolicy
+            - iam:DeleteLoginProfile
+            - rds:ModifyDBSnapshotAttribute
+            - rds:ModifyDBClusterSnapshotAttribute
+            - s3:PutAccountPublicAccessBlock
+            Resource: "*"
+  SlackActionsCrossAccountRole:
+    Condition: CreateSlackActionsCrossAccountRole
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub "${ProjectName}-slack-cross-account-role-${AWS::Region}"
+      PermissionsBoundary: !Ref SlackActionsCrossAccountRolePermissionBoundary
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            AWS:
+            - !Sub arn:aws:iam::${AutomationAccountId}:root
+          Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: ResourceTaggingPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: TaggingAccess
+            Effect: Allow
+            Action:
+            - backup:TagResource
+            - ec2:CreateTags
+            - elasticfilesystem:CreateTags
+            - eks:TagResource
+            - elasticloadbalancing:AddTags
+            - fsx:TagResource
+            - rds:AddTagsToResource
+            - secretsmanager:TagResource
+            Resource: "*"
+      - PolicyName: EC2WritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:ReleaseAddress
+            - ec2:RevokeSecurityGroupIngress
+            - ec2:ModifyImageAttribute
+            - ec2:ModifySnapshotAttribute
+            Resource: "*"
+      - PolicyName: IAMWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:GetRole
+            - iam:DeleteUser
+            - iam:DeleteAccessKey
+            - iam:DetachRolePolicy
+            - iam:DeleteRolePolicy
+            - iam:DeleteLoginProfile
+            Resource: "*"
+      - PolicyName: RDSWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: RDSAccess
+            Effect: Allow
+            Action:
+            - rds:ModifyDBSnapshotAttribute
+            - rds:ModifyDBClusterSnapshotAttribute
+            Resource: "*"
+      - PolicyName: S3WritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+            - s3:PutAccountPublicAccessBlock
+            Resource: "*"
+
+  CrossAccountRolePermissionBoundary:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      Description: "Permission boundary for Cross Account Role. Limits privileges to safe, necessary actions."
+      ManagedPolicyName: !Sub "${ProjectName}-cross-account-pb-${AWS::Region}"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        # Allow read-only and safe listing operations
+        - Sid: "AllowReadOperations"
+          Effect: Allow
+          Action:
+          - cloudtrail:LookupEvents
+          - compute-optimizer:GetEC2InstanceRecommendations
+          - ec2:DescribeSpot*
+          - ec2:DescribeSecurityGroup*
+          - ec2:DescribeNetworkInterfaces
+          - ec2:DescribeRouteTables
+          - ec2:DescribeInstances
+          - ec2:DescribeVolumes
+          - ec2:DescribeTags
+          - ec2:DescribeVpcs
+          - ec2:DescribeSubnets
+          - ec2:DescribeVpcEndpoints
+          - ec2:DescribeAddresses
+          - ec2:DescribeSnapshots
+          - ec2:DescribeImages
+          - elasticfilesystem:DescribeFileSystems
+          - eks:ListClusters
+          - eks:DescribeCluster
+          - elasticloadbalancing:DescribeLoadBalancers
+          - elasticloadbalancing:DescribeTags
+          - fsx:DescribeFileSystems
+          - fsx:ListTagsForResource
+          - iam:GetRole
+          - iam:GetUser
+          - iam:ListUsers
+          - iam:ListAccessKeys
+          - iam:GetLoginProfile
+          - iam:ListInstanceProfilesForRole
+          - iam:ListRoleTags
+          - iam:ListAttachedRolePolicies
+          - iam:ListRolePolicies
+          - iam:GetRolePolicy
+          - iam:ListUserTags
+          - iam:GetAccessKeyLastUsed
+          - iam:GetInstanceProfile
+          - iam:ListPolicies
+          - iam:ListPolicyVersions
+          - iam:GetPolicy*
+          - rds:DescribeDBInstances
+          - rds:DescribeDBClusters
+          - rds:ListTagsForResource
+          - s3:GetBucket*
+          - s3:GetEncryptionConfiguration
+          - s3:GetObject
+          - s3:ListBucket
+          - s3:GetAccountPublicAccessBlock
+          - secretsmanager:ListSecrets
+          - secretsmanager:DescribeSecret
+          - ssm:DescribeInstanceInformation
+          - ssm:DescribeInstanceAssociationsStatus
+          - ssm:GetParameter
+          - sts:DecodeAuthorizationMessage
+          - backup:ListBackupPlans
+          - backup:ListTags
+          Resource: "*"
+        # Allow specific tagging and modification operations that are needed
+        - Sid: "AllowPermittedModifications"
+          Effect: Allow
+          Action:
+          - ec2:CreateTags
+          - ec2:DeleteTags
+          - ec2:CreateImage
+          - ec2:RevokeSecurityGroupIngress
+          - ec2:ModifySecurityGroupRules
+          - ec2:DeleteSecurityGroup
+          - ec2:CreateSecurityGroup
+          - ec2:ModifyInstanceAttribute
+          - ec2:ModifyImageAttribute
+          - ec2:ModifySnapshotAttribute
+          - ec2:TerminateInstances
+          - ec2:ReleaseAddress
+          - ec2:CreateFlowLogs
+          - ec2:DeleteVolume
+          - ec2:AssociateIamInstanceProfile
+          - ec2:AuthorizeSecurityGroupIngress
+          - ec2:ModifyVpcEndpoint
+          - ec2:CreateVpcEndpoint
+          - elasticfilesystem:CreateTags
+          - eks:TagResource
+          - elasticloadbalancing:SetSecurityGroups
+          - elasticloadbalancing:ApplySecurityGroupsToLoadBalancer
+          - elasticloadbalancing:AddTags
+          - elasticloadbalancing:DeleteLoadBalancer
+          - fsx:TagResource
+          - iam:DetachRolePolicy
+          - iam:DeleteRolePolicy
+          - iam:UpdateAccessKey
+          - iam:AttachRolePolicy
+          - iam:CreateRole
+          - iam:CreateInstanceProfile
+          - iam:AddRoleToInstanceProfile
+          - iam:CreatePolicy*
+          - iam:DeletePolicy*
+          - iam:PassRole
+          - pricing:GetProducts
+          - rds:AddTagsToResource
+          - rds:ModifyDBSnapshotAttribute
+          - rds:ModifyDBClusterSnapshotAttribute
+          - s3:PutAccountPublicAccessBlock
+          - secretsmanager:TagResource
+          - events:PutEvents
+          - backup:TagResource
+          Resource: "*"
+  CrossAccountRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub "${ProjectName}-cross-account-role-${AWS::Region}"
+      PermissionsBoundary: !Ref CrossAccountRolePermissionBoundary
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            AWS:
+            - !Sub arn:aws:iam::${AutomationAccountId}:root
+          Action:
+            - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/ReadOnlyAccess
+      Policies:
+      - PolicyName: EC2Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2Access
+            Effect: Allow
+            Action:
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DescribeInstances
+            - ec2:DescribeVolumes
+            - ec2:DeleteVolume
+            - ec2:DescribeSecurityGroupRules
+            - ec2:DescribeSecurityGroups
+            - ec2:DeleteSecurityGroup
+            - ec2:CreateImage
+            - ec2:TerminateInstances
+            - ec2:ModifySecurityGroupRules
+            - ec2:RevokeSecurityGroupIngress
+            - ec2:DescribeRouteTables
+            - ec2:CreateSecurityGroup
+            - ec2:ModifyInstanceAttribute
+            - ec2:ModifySnapshotAttribute
+            - ec2:ModifyImageAttribute
+            - ec2:CreateTags
+            - ec2:DescribeInstanceStatus
+            - ec2:DescribeSpotPriceHistory
+            - ec2:DescribeSpotInstanceRequests
+            - ec2:DescribeSpotFleetRequests
+            - ec2:DescribeTags
+            - ec2:DeleteTags
+            - ec2:AssociateIamInstanceProfile
+            - ec2:ReleaseAddress
+            - ec2:AuthorizeSecurityGroupIngress
+            - ec2:DescribeVpcs
+            - ec2:DescribeVpcEndpoints
+            - ec2:ModifyVpcEndpoint
+            - ec2:DescribeSubnets
+            - ec2:CreateVpcEndpoint
+            - ec2:CreateFlowLogs
+            Resource: "*"
+      - PolicyName: EKSReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EKSAccess
+            Effect: Allow
+            Action:
+            - eks:ListClusters
+            - eks:DescribeCluster
+            - eks:TagResource
+            Resource: "*"
+      - PolicyName: RDSReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: RDSAccess
+            Effect: Allow
+            Action:
+            - rds:AddTagsToResource
+            - rds:DescribeDBInstances
+            - rds:DescribeDBClusters
+            - rds:ListTagsForResource
+            - rds:ModifyDBSnapshotAttribute
+            - rds:ModifyDBClusterSnapshotAttribute
+            Resource: "*"
+      - PolicyName: EFSReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EFSAccess
+            Effect: Allow
+            Action:
+            - elasticfilesystem:DescribeFileSystems
+            - elasticfilesystem:CreateTags
+            Resource: "*"
+      - PolicyName: PricingAPIPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: PricingAPIAccess
+            Effect: Allow
+            Action: pricing:GetProducts
+            Resource: "*"
+      - PolicyName: CostOptimizerPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CostOptimizerAccess
+            Effect: Allow
+            Action:
+            - compute-optimizer:GetEC2InstanceRecommendations
+            Resource: "*"
+      - PolicyName: SecretsManagerPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SecretsAccess
+            Effect: Allow
+            Action:
+            - secretsmanager:ListSecrets
+            - secretsmanager:DescribeSecret
+            - secretsmanager:TagResource
+            Resource: "*"
+      - PolicyName: STSPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action:
+            - sts:DecodeAuthorizationMessage
+            Resource: "*"
+      - PolicyName: S3Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+            - s3:GetBucketEncryption
+            - s3:GetEncryptionConfiguration
+            - s3:GetBucketPolicyStatus
+            - s3:GetBucketAcl
+            - s3:GetObject
+            - s3:ListBucket
+            - s3:GetAccountPublicAccessBlock
+            - s3:PutAccountPublicAccessBlock
+            - s3:GetBucketTagging
+            Resource: "*"
+      - PolicyName: IAMPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IAMAccess
+            Effect: Allow
+            Action:
+            - iam:GetLoginProfile
+            - iam:ListAttachedRolePolicies
+            - iam:AttachRolePolicy
+            - iam:*AccessKey*
+            - iam:DetachRolePolicy
+            - iam:DeleteRolePolicy
+            - iam:DeletePolicyVersion
+            - iam:DeleteUser
+            - iam:DeleteLoginProfile
+            - iam:DeleteAccessKey
+            - iam:ListRolePolicies
+            - iam:GetRolePolicy
+            - iam:GetRole
+            - iam:GetPolicy
+            - iam:GetPolicyVersion
+            - iam:ListPolicyVersions
+            - iam:CreatePolicy*
+            - iam:CreateRole
+            - iam:PassRole
+            - iam:ListUserTags
+            - iam:GetInstanceProfile
+            - iam:CreateInstanceProfile
+            - iam:AddRoleToInstanceProfile
+            - iam:ListInstanceProfilesForRole
+            - iam:ListRoles
+            - iam:ListUsers
+            Resource: "*"
+      - PolicyName: ELBPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: ELBAccess
+            Effect: Allow
+            Action:
+            - elasticloadbalancing:AddTags
+            - elasticloadbalancing:DescribeLoadBalancers
+            - elasticloadbalancing:DescribeTags
+            - elasticloadbalancing:DeleteLoadBalancer
+            Resource: "*"
+      - PolicyName: FSXPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: FSXAccess
+            Effect: Allow
+            Action:
+            - fsx:DescribeFileSystems
+            - fsx:ListTagsForResource
+            - fsx:TagResource
+            Resource: "*"
+      - PolicyName: BackupPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: BackupAccess
+            Effect: Allow
+            Action:
+            - backup:ListBackupPlans
+            - backup:ListTags
+            - backup:TagResource
+            Resource: "*"
+      - PolicyName: CloudTrailPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudTrailAccess
+            Effect: Allow
+            Action:
+            - cloudtrail:LookupEvents
+            Resource: "*"
+      - PolicyName: SSMReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action:
+            - ssm:DescribeInstanceInformation
+            - ssm:DescribeInstanceAssociationsStatus
+            Resource: "*"
+      - PolicyName: EventsWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EventsRuleAccess
+            Effect: Allow
+            Action:
+            - events:PutRule
+            - events:PutTargets
+            - events:RemoveTargets
+            - events:DeleteRule
+            - events:PutEvents
+            Resource:
+            - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ProjectName}-*"
+            - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      - PolicyName: FlowLogsWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: FlowLogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:DeleteLogDelivery
+            Resource: "*"
+      - PolicyName: KMSDecryptPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: KMSAccess
+            Effect: Allow
+            Action: kms:Decrypt
+            Resource: '*'
+
+  StateManagerDocAssociationWaiterLambdaRole:
+    Condition: CreateSSMDocumentResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-state-manager-doc-assoc-waiter-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: BasicLambdaExecutionPolicyForLogs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: SSMReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action: ssm:GetDocument
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AutomationAccountId}:document/${SSMDocumentName}"
+
+  StateManagerDocAssociationWaiterLambda:
+    Condition: CreateSSMDocumentResources
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      Runtime: python3.11
+      FunctionName: !Sub "${ProjectName}-state-manager-doc-assoc-waiter"
+      Timeout: 600
+      Role: !GetAtt StateManagerDocAssociationWaiterLambdaRole.Arn
+      Environment:
+        Variables:
+          SSM_DOCUMENT: !If [ARNDocument, !Sub "arn:aws:ssm:${AWS::Region}:${AutomationAccountId}:document/${SSMDocumentName}", !Ref SSMDocumentName]
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from os import getenv
+          import requests
+          from time import sleep
+          SSM_DOCUMENT = getenv('SSM_DOCUMENT')
+          SLEEP_SECONDS = 30
+          MAX_RETRY = 10
+          def lookup_ssm_document():
+              client = boto3.client('ssm')
+              try:
+                  client.get_document(Name=SSM_DOCUMENT)
+                  return True
+              except client.exceptions.InvalidDocument:
+                  return False
+              except Exception as error:
+                  print(f"{str(error)}")
+                  return False
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              if event_type in ['Create']:
+                  retry_count = 0
+                  found_ssm_document = lookup_ssm_document()
+                  while not found_ssm_document and retry_count != MAX_RETRY:
+                      retry_count += 1
+                      print(f"Retry attempt: {retry_count}")
+                      print(f"Sleeping for {SLEEP_SECONDS} seconds before retry")
+                      sleep(SLEEP_SECONDS)
+                      found_ssm_document = lookup_ssm_document()
+                  if not found_ssm_document:
+                      status = 'FAILED'
+                      reason = f"SSM Document named {SSM_DOCUMENT} not found."
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  StateManagerDocAssociationWaiter:
+    Condition: CreateSSMDocumentResources
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: lambda
+      ServiceToken: !GetAtt StateManagerDocAssociationWaiterLambda.Arn
+
+  StateManagerDocAssociation:
+    Condition: CreateSSMDocumentResources
+    DependsOn: StateManagerDocAssociationWaiter
+    Type: AWS::SSM::Association
+    Properties:
+      Name: !If [ARNDocument, !Sub "arn:aws:ssm:${AWS::Region}:${AutomationAccountId}:document/${SSMDocumentName}", !Ref SSMDocumentName]
+      MaxConcurrency: !Ref StateManagerMaxConcurrency
+      MaxErrors: !Ref StateManagerMaxErrors
+      ComplianceSeverity: HIGH
+      AssociationName: !Sub "${ProjectName}-automation-document-association"
+      Targets:
+        - Key: InstanceIds
+          Values:
+            - "*"
+
+Outputs:
+  CrossAccountRole:
+    Description: Cross Account Role to be assumed by Automation account Lambda
+    Value: !Ref CrossAccountRole
+  SlackActionsCrossAccountRolePermissionBoundaryARN:
+    Condition: CreateSlackActionsCrossAccountRole
+    Description: Permission Boundary ARN for Slack Actions Cross Account Role
+    Value: !Ref SlackActionsCrossAccountRolePermissionBoundary
+  SlackActionsCrossAccountRole:
+    Condition: CreateSlackActionsCrossAccountRole
+    Description: Cross Account Role for taking Slack Actions to be assumed by Automation account Lambda
+    Value: !Ref SlackActionsCrossAccountRole

@@ -1,0 +1,60 @@
+#!/bin/bash -e
+
+if ! [ -n "$DEBUG" ]; then
+  export DEBUG=false
+fi
+
+GO_VERSION="1.22.5"
+GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
+GO_DOWNLOAD_URL="https://go.dev/dl/${GO_TARBALL}"
+
+install_go_linux() {
+    echo "🔹 Installing Go ${GO_VERSION} on Linux..."
+    curl -OL $GO_DOWNLOAD_URL
+    sudo rm -rf /usr/local/go
+    sudo tar -C /usr/local -xzf $GO_TARBALL
+    export PATH=$PATH:/usr/local/go/bin
+    echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+    echo "✅ Go installed successfully!"
+}
+
+install_go_mac() {
+    echo "🔹 Installing Go ${GO_VERSION} on macOS..."
+    brew install go@${GO_VERSION%.*} || brew upgrade go
+    echo "✅ Go installed successfully!"
+}
+
+install_go_windows() {
+    echo "🔹 Installing Go ${GO_VERSION} on Windows..."
+    POWERSHELL_CMD='
+    $GO_VERSION="1.22.5";
+    $URL="https://go.dev/dl/go$GO_VERSION.windows-amd64.msi";
+    $INSTALLER="C:\Windows\Temp\go$GO_VERSION.msi";
+    Invoke-WebRequest -Uri $URL -OutFile $INSTALLER;
+    Start-Process -Wait -FilePath msiexec.exe -ArgumentList "/i $INSTALLER /quiet /norestart";
+    [System.Environment]::SetEnvironmentVariable("Path", $Env:Path + ";C:\Go\bin", [System.EnvironmentVariableTarget]::Machine);
+    Remove-Item -Path $INSTALLER -Force;
+    Write-Output "✅ Go installed successfully!";
+    '
+    powershell.exe -Command "$POWERSHELL_CMD"
+}
+
+install_go() {
+    case "$(uname -s)" in
+        Linux*) install_go_linux ;;
+        Darwin*) install_go_mac ;;
+        MINGW*|CYGWIN*|MSYS*) install_go_windows ;;
+        *)
+            echo "❌ Unsupported OS. Please install Go manually from https://go.dev/dl/"
+            exit 1
+            ;;
+    esac
+}
+
+if ! command -v go &> /dev/null; then
+    echo "Go is not installed!"
+    install_go
+fi
+
+go build -o rrcore .
+./rrcore "$@"

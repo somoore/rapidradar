@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates AWS Batch Resources needed to generate Resources Reports for Disabled/Deleted SSO Users
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - VpcId
+          - PrivateSubnets
+      - Label:
+          default: Resource Reports Generator Configuration
+        Parameters:
+          - ECRImageURI
+          - SSOUserManagerArtifactsBucketName
+          - SSOUserManagerArtifactsBucketARN
+          - UnusedResourcesDetectionBypassTagKey
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      VpcId:
+        default: VPC ID
+      PrivateSubnets:
+        default: List of Private Subnets IDs
+      ECRImageURI:
+        default: ECR Image URI for app to generate reports batch job (User Offboarding Workdlow)
+      SSOUserManagerArtifactsBucketName:
+        default: Name of SSOUserManagerArtifacts Bucket
+      SSOUserManagerArtifactsBucketARN:
+        default: ARN of SSOUserManagerArtifacts Bucket
+      UnusedResourcesDetectionBypassTagKey:
+        default: Tag Key that needs to be present on unused resources if detection needs to be bypassed
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  VpcId:
+    Type: String
+    Description: ID of VPC where to create AWS batch resources
+  PrivateSubnets:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of IDs of Private Subnets
+  ECRImageURI:
+    Type: String
+    Description: ECR Image URI of the image to run using Batch for generating reports for deleted/disabled SSO User
+  SSOUserManagerArtifactsBucketName:
+    Type: String
+    Description: Bucket Name
+  SSOUserManagerArtifactsBucketARN:
+    Type: String
+    Description: Bucket ARN
+  UnusedResourcesDetectionBypassTagKey:
+    Type: String
+    Description: Tag Key
+
+Resources:
+  BatchComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      ComputeEnvironmentName: !Sub "${ProjectName}-compute-env"
+      ComputeResources:
+        MaxvCpus: 4
+        Subnets: !Ref PrivateSubnets
+        Type: FARGATE
+        SecurityGroupIds:
+        - !Ref BatchSecurityGroup
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      State: ENABLED
+      Tags: {
+        "Name": !Sub "${ProjectName}-compute-env",
+        "ProjectName": !Sub "${ProjectName}"
+      }
+      Type: MANAGED
+
+  BatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      ComputeEnvironmentOrder:
+        - ComputeEnvironment: !GetAtt BatchComputeEnvironment.ComputeEnvironmentArn
+          Order: 1
+      JobQueueName: !Sub "${ProjectName}-job-queue"
+      Priority: 100
+      State: ENABLED
+      Tags: {
+        "Name": !Sub "${ProjectName}-job-queue",
+        "ProjectName": !Sub "${ProjectName}"
+      }
+
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub "${ProjectName}-generate-report-job"
+      ContainerProperties:
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        FargatePlatformConfiguration:
+          PlatformVersion: LATEST
+        Image: !Ref ECRImageURI
+        JobRoleArn: !GetAtt ECSTaskRole.Arn
+        NetworkConfiguration:
+            AssignPublicIp: ENABLED
+        ResourceRequirements:
+          - Type: VCPU
+            Value: 0.5
+          - Type: MEMORY
+            Value: 1024
+        Environment:
+          - Name: ARTIFACTS_BUCKET
+            Value: !Ref SSOUserManagerArtifactsBucketName
+      PlatformCapabilities:
+        - FARGATE
+      RetryStrategy:
+        Attempts: 2
+      Tags: {
+        "Name": !Sub "${ProjectName}-generate-reports",
+        "ProjectName": !Sub "${ProjectName}"
+      }
+      Timeout:
+        AttemptDurationSeconds: 3600
+      Type: container
+
+  BatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-batch-security-group"
+      GroupDescription: Security Group for AWS Batch
+      VpcId: !Ref VpcId
+      Tags:
+      - Key: !Ref UnusedResourcesDetectionBypassTagKey
+        Value: "true"
+
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-aws-batch-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: ["batch.amazonaws.com"]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      Policies:
+      - PolicyName: !Sub "${ProjectName}-aws-batch-service-role"
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - ec2:DescribeAccountAttributes
+            - ec2:DescribeInstances
+            - ec2:DescribeInstanceAttribute
+            - ec2:DescribeSubnets
+            - ec2:DescribeSecurityGroups
+            - ec2:DescribeKeyPairs
+            - ec2:DescribeImages
+            - ec2:DescribeImageAttribute
+            - ec2:DescribeSpotInstanceRequests
+            - ec2:DescribeSpotFleetInstances
+            - ec2:DescribeSpotFleetRequests
+            - ec2:DescribeSpotPriceHistory
+            - ec2:DescribeVpcClassicLink
+            - ec2:DescribeLaunchTemplateVersions
+            - ec2:CreateLaunchTemplate
+            - ec2:DeleteLaunchTemplate
+            - ec2:RequestSpotFleet
+            - ec2:CancelSpotFleetRequests
+            - ec2:ModifySpotFleetRequest
+            - ec2:TerminateInstances
+            - ec2:RunInstances
+            - autoscaling:DescribeAccountLimits
+            - autoscaling:DescribeAutoScalingGroups
+            - autoscaling:DescribeLaunchConfigurations
+            - autoscaling:DescribeAutoScalingInstances
+            - autoscaling:CreateLaunchConfiguration
+            - autoscaling:CreateAutoScalingGroup
+            - autoscaling:UpdateAutoScalingGroup
+            - autoscaling:SetDesiredCapacity
+            - autoscaling:DeleteLaunchConfiguration
+            - autoscaling:DeleteAutoScalingGroup
+            - autoscaling:CreateOrUpdateTags
+            - autoscaling:SuspendProcesses
+            - autoscaling:PutNotificationConfiguration
+            - autoscaling:TerminateInstanceInAutoScalingGroup
+            - ecs:DescribeClusters
+            - ecs:DescribeContainerInstances
+            - ecs:DescribeTaskDefinition
+            - ecs:DescribeTasks
+            - ecs:ListAccountSettings
+            - ecs:ListClusters
+            - ecs:ListContainerInstances
+            - ecs:ListTaskDefinitionFamilies
+            - ecs:ListTaskDefinitions
+            - ecs:ListTasks
+            - ecs:CreateCluster
+            - ecs:DeleteCluster
+            - ecs:RegisterTaskDefinition
+            - ecs:DeregisterTaskDefinition
+            - ecs:RunTask
+            - ecs:StartTask
+            - ecs:StopTask
+            - ecs:UpdateContainerAgent
+            - ecs:DeregisterContainerInstance
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogGroups
+            - iam:GetInstanceProfile
+            - iam:GetRole
+            Resource: "*"
+          - Effect: Allow
+            Action: ecs:TagResource
+            Resource:
+            - arn:aws:ecs:*:*:task/*_Batch_*
+          - Effect: Allow
+            Action: iam:PassRole
+            Resource:
+            - "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                - ec2.amazonaws.com
+                - ec2.amazonaws.com.cn
+                - ecs-tasks.amazonaws.com
+          - Effect: Allow
+            Action: iam:CreateServiceLinkedRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                - spot.amazonaws.com
+                - spotfleet.amazonaws.com
+                - autoscaling.amazonaws.com
+                - ecs.amazonaws.com
+          - Effect: Allow
+            Action:
+            - ec2:CreateTags
+            Resource:
+            - "*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction: RunInstances
+
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ""
+            Effect: "Allow"
+            Principal:
+              Service: ["ecs-tasks.amazonaws.com"]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      Policies:
+      - PolicyName: !Sub "${ProjectName}-generate-reports-task-policy"
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - "ecr:GetAuthorizationToken"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: '*'
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action:
+            - sts:AssumeRole
+            Resource: '*'
+      - PolicyName: S3ReadWritePolicy
+        PolicyDocument:
+          Statement:
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+            - s3:PutObject*
+            - s3:GetObject*
+            - s3:DeleteObject*
+            - s3:ListBucket*
+            Resource:
+            - !Ref SSOUserManagerArtifactsBucketARN
+            - !Sub "${SSOUserManagerArtifactsBucketARN}/*"
+
+Outputs:
+  BatchJobDefinitionARN:
+    Description: ARN of Batch Job Definition
+    Value: !Ref BatchJobDefinition
+  BatchJobQueueARN:
+    Description: ARN of Batch Job Queue
+    Value: !Ref BatchJobQueue

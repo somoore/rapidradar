@@ -1,0 +1,428 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates SSM Document in all regions in Automation Account
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - DeploymentTargets
+          - ExcludeAccounts
+          - ManagementAccountId
+          - SSMDocumentContentJsonSSM
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you want to share SSM Document with
+      ExcludeAccounts:
+        default: Accounts you want to exclude from sharing SSM Document
+      ManagementAccountId:
+        default: Management Account ID
+      SSMDocumentContentJsonSSM:
+        default: Name of SSM Parameter containing Content of SSM Document
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 18
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List
+  ManagementAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  SSMDocumentContentJsonSSM:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Name of SSM Parameter Item containing Content of SSM Document in JSON format
+
+Resources:
+  SSMDocumentCreatorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ssm-document-creator-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SSMReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action:
+            - ssm:CreateDocument
+            - ssm:UpdateDocument
+            - ssm:UpdateDocumentDefaultVersion
+            - ssm:DeleteDocument
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/${ProjectName}*"
+
+  SSMDocumentCreatorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-ssm-document-creator"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt SSMDocumentCreatorLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import uuid
+          from os import getenv
+          import requests
+          from botocore.exceptions import ClientError
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              provider_name = None
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  kwargs[key] = value
+              kwargs['VersionName'] = str(uuid.uuid4())
+              if event_type in ['Create']:
+                  method=getattr(client, 'create_document')
+                  try:
+                      print(f"...Creating new SSM Document {kwargs['Name']} with args: {kwargs}")
+                      data = method(**kwargs)
+                      provider_name = data['DocumentDescription']['Name']
+                      print(f"SSM Document {provider_name} has been created successfully")
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  method=getattr(client, 'update_document')
+                  kwargs['DocumentVersion'] = "$LATEST"
+                  try:
+                      if 'DocumentType' in kwargs:
+                          del kwargs['DocumentType']
+                      print(f"...Updating SSM Document {kwargs['Name']} with args: {kwargs}")
+                      data = method(**kwargs)
+                      ssm_document_name = data['DocumentDescription']['Name']
+                      ssm_document_version = data['DocumentDescription']['DocumentVersion']
+                      print(f"A new version {ssm_document_version} has been created for SSM Document {ssm_document_name}")
+                      if not update_ssm_default_version(client, ssm_document_name, ssm_document_version):
+                          print(f"[ERROR] Could not set the latest version {ssm_document_version} as default for SSM Document {ssm_document_name}")
+                      provider_name = ssm_document_name
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_document')
+                  try:
+                      provider_name = event['PhysicalResourceId']
+                      print(f"...Deleting SSM Document {provider_name}")
+                      data = method(Name=provider_name)
+                      print(f"SSM Document {provider_name} has been deleted successfully")
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': provider_name if provider_name is not None else event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def update_ssm_default_version(client, document_name, document_version):
+              try:
+                  print(f"...Setting default document version")
+                  response = client.update_document_default_version(
+                      Name=document_name,
+                      DocumentVersion=f'{document_version}'
+                  )
+                  print(f"Document version {document_version} has been set as default version for SSM Document {document_name}")
+                  return True
+              except Exception as e:
+                  print(f"[ERROR] {str(e)}")
+                  return False
+
+  SSMDocument:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt SSMDocumentCreatorLambda.Arn
+      KwArgs:
+        Name: !Sub ${ProjectName}-automation-document
+        DocumentType: Command
+        DocumentFormat: JSON
+        Content: !Ref SSMDocumentContentJsonSSM
+
+  ModifyDocumentPermissionsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-ssm-document-permission-modifier"
+      Handler: "index.handler"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt ModifyDocumentPermissionsRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          SSO_CROSS_ACCOUNT_ROLE_ARN: !Sub "arn:aws:iam::${ManagementAccountId}:role/${ProjectName}-sso-cross-account-role"
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from time import sleep
+          import ast
+          from os import getenv
+          import requests
+          PROJECT_NAME = getenv('PROJECT_NAME')
+          SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
+          ORG_THROTTLE_PERIOD = 0.2
+          def __assume_role(role_arn):
+              sts = boto3.client('sts')
+              response = sts.assume_role(RoleArn=role_arn, RoleSessionName=PROJECT_NAME)
+              session = boto3.Session(aws_access_key_id=response['Credentials']['AccessKeyId'],
+                  aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                  aws_session_token=response['Credentials']['SessionToken'])
+              return session
+          def chunk_list(input_list, chunk_size):
+              return [input_list[i:i + chunk_size] for i in range(0, len(input_list), chunk_size)]
+          def get_children(client, child_type, ou_id, exclude_accounts):
+              children = []
+              retry_attempts, max_retry_attempts, initial_delay = 0, 5, 5
+              delay = initial_delay
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              while next_token is not None:
+                  kwargs = base_kwargs.copy()
+                  if next_token != '':
+                      kwargs.update({'NextToken': next_token})
+                  sleep(ORG_THROTTLE_PERIOD)
+                  while retry_attempts < max_retry_attempts:
+                      try:
+                          response = client.list_children(**kwargs)
+                          for child in response['Children']:
+                              if child_type == 'ACCOUNT':
+                                  if child['Id'] not in exclude_accounts:
+                                      children.append(child['Id'])
+                              elif child_type == 'ORGANIZATIONAL_UNIT':
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts))
+                                  children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts))
+                          next_token = response['NextToken'] if 'NextToken' in response else None
+                          break
+                      except client.exceptions.ClientError as error:
+                          if error.response['Error']['Code'] == 'TooManyRequestsException' and retry_attempts < max_retry_attempts:
+                              retry_attempts += 1
+                              print(f"TooManyRequestsException occurred. Retrying in {delay} seconds...")
+                              sleep(delay)
+                              delay *= 2
+                              continue
+                          print(str(error))
+                          break
+              return children
+          def get_all_active_accounts(client, deployment_targets: list, exclude_accounts: list) -> list:
+              active_accounts = []
+              try:
+                  for target in deployment_targets:
+                      active_accounts.extend(get_children(client, 'ACCOUNT', target, exclude_accounts))
+                      active_accounts.extend(get_children(client, 'ORGANIZATIONAL_UNIT', target, exclude_accounts))
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_accounts
+          def get_ssm_shared_accounts(client, document_name, permission_type):
+              base_kwargs, next_token = {'Name': document_name, 'PermissionType': permission_type}, ''
+              shared_accounts = []
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = client.describe_document_permission(**kwargs)
+                      shared_accounts.extend(response['AccountIds'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return shared_accounts
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              kwargs = {}
+              for key, value in props['KwArgs'].items():
+                  try:
+                      kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      kwargs[key] = value
+              deployment_targets = str(kwargs['DeploymentTargets']).replace(' ','').split(',')
+              exclude_accounts = str(kwargs['ExcludeAccounts'])
+              exclude_accounts = exclude_accounts.replace(' ','').split(',') if exclude_accounts else []
+              del kwargs['DeploymentTargets']
+              del kwargs['ExcludeAccounts']
+              if event_type in ['Create']:
+                  method=getattr(client, 'modify_document_permission')
+                  try:
+                      active_session = __assume_role(SSO_CROSS_ACCOUNT_ROLE_ARN)
+                      organizations = active_session.client('organizations', region_name='us-east-1')
+                      accounts_to_add = get_all_active_accounts(organizations, deployment_targets, exclude_accounts)
+                      print(f"...Allowing {len(accounts_to_add)} accounts to access SSM Document: {accounts_to_add}")
+                      accounts_chunks = chunk_list(accounts_to_add, 20)
+                      for idx, chunk in enumerate(accounts_chunks):
+                          kwargs['AccountIdsToAdd'] = chunk
+                          print({"API_Call": "ssm:ModifyDocumentPermissions", "KwArgs": kwargs})
+                          data = method(**kwargs)
+                          print({"Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  method=getattr(client, 'modify_document_permission')
+                  try:
+                      accounts_to_remove = get_ssm_shared_accounts(client, kwargs['Name'], kwargs['PermissionType'])
+                      accounts_chunks = chunk_list(accounts_to_remove, 20)
+                      remove_kwargs = kwargs.copy()
+                      for idx, chunk in enumerate(accounts_chunks):
+                          remove_kwargs['AccountIdsToRemove'] = chunk
+                          client.modify_document_permission(**remove_kwargs)
+                      active_session = __assume_role(SSO_CROSS_ACCOUNT_ROLE_ARN)
+                      organizations = active_session.client('organizations', region_name='us-east-1')
+                      accounts_to_add = get_all_active_accounts(organizations, deployment_targets, exclude_accounts)
+                      print(f"...Allowing {len(accounts_to_add)} accounts to access SSM Document: {accounts_to_add}")
+                      accounts_chunks = chunk_list(accounts_to_add, 20)
+                      for idx, chunk in enumerate(accounts_chunks):
+                          kwargs['AccountIdsToAdd'] = chunk
+                          print({"API_Call": "ssm:ModifyDocumentPermissions", "KwArgs": kwargs})
+                          data = method(**kwargs)
+                          print({"Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'modify_document_permission')
+                  try:
+                      accounts_to_remove = get_ssm_shared_accounts(client, kwargs['Name'], kwargs['PermissionType'])
+                      print(f"...Removing {len(accounts_to_remove)} accounts from SSM Document permission: {accounts_to_remove}")
+                      accounts_chunks = chunk_list(accounts_to_remove, 20)
+                      for idx, chunk in enumerate(accounts_chunks):
+                          kwargs['AccountIdsToRemove'] = chunk
+                          print({"API_Call": "ssm:ModifyDocumentPermissions", "KwArgs": kwargs})
+                          data = method(**kwargs)
+                          print({"Response": data})
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+
+  ModifyDocumentPermissionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: AssumeRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: StsAccess
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: "*"
+      - PolicyName: SSMReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSMAccess
+            Effect: Allow
+            Action:
+            - ssm:ModifyDocumentPermission
+            - ssm:DescribeDocumentPermission
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/${ProjectName}*"
+
+  ModifyDocumentPermissions:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: ssm
+      ServiceToken: !GetAtt ModifyDocumentPermissionsLambda.Arn
+      KwArgs:
+        Name: !Ref SSMDocument
+        PermissionType: Share
+        DeploymentTargets: !Ref DeploymentTargets
+        ExcludeAccounts: !Ref ExcludeAccounts
+
+Outputs:
+  SSMDocumentName:
+    Description: SSM Document Name
+    Value: !Ref SSMDocument

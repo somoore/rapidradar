@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  This template creates the delivery S3 bucket for VPC Flow Logs
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  FlowLogsDeliveryBucketPrefix:
+    Type: String
+    Description: Prefix for VPC FlowLogs Delivery S3 Bucket (will be suffixed with AccountId and Region)
+    Default: <ProjectName>-flowlogs-delivery-bucket
+  AdminAccountId:
+    Type: String
+    Description: Admin Account ID for VPC Flow Logs where KMS Key is deployed
+
+Conditions:
+  AdminAccountIdEmpty: !Equals
+  - !Ref AdminAccountId
+  - ""
+
+Resources:
+  FlowLogsDeliveryS3Bucket:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${FlowLogsDeliveryBucketPrefix}-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !If [ AdminAccountIdEmpty, !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/FLOW_LOGS_DELIVERY_KEY:SecretString:KeyArn:AWSCURRENT}}', !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AdminAccountId}:secret:/${ProjectName}/FLOW_LOGS_DELIVERY_KEY:SecretString:KeyArn:AWSCURRENT}}' ]
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: True
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      VersioningConfiguration:
+        Status: Enabled
+
+  FlowLogsDeliveryS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FlowLogsDeliveryS3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: DenyPutObjectUnlessFlowLogs
+            Effect: Deny
+            Action: s3:PutObject
+            Condition:
+              ForAnyValue:StringNotEquals:
+                aws:CalledVia: delivery.logs.amazonaws.com
+            Resource:
+              - !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}
+              - !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}/*
+            Principal: '*'
+          - Sid: SecureTransport
+            Effect: Deny
+            Action: 's3:*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+            Resource:
+              - !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}
+              - !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}/*
+            Principal: '*'
+          - Sid: AWSLogDeliveryCheck
+            Effect: Allow
+            Action:
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}
+            Principal:
+              Service:
+                - delivery.logs.amazonaws.com
+          - Sid: AWSLogDeliveryWrite
+            Effect: Allow
+            Action: s3:PutObject
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+            Resource: !Sub arn:aws:s3:::${FlowLogsDeliveryS3Bucket}/*
+            Principal:
+              Service:
+                - delivery.logs.amazonaws.com
+
+Outputs:
+  FlowLogsDeliveryS3Bucket:
+    Description: VPC Flow Logs Delivery S3 Bucket
+    Value: !Ref FlowLogsDeliveryS3Bucket

@@ -1,0 +1,340 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - CloudWatchAlarmsSnsTopicARN
+          - SlackApiDomainName
+          - SlackApiDomainCertificateArn
+      - Label:
+          default: Lambda Functions
+        Parameters:
+          - SlackInteractivityLambdaARN
+          - SlackRequestVerifierLambdaARN
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      CloudWatchAlarmsSnsTopicARN:
+        default: ARN of SNS topic used for sending CloudWatch Alarms
+      SlackApiDomainName:
+        default: Domain Name for Slack API
+      SlackApiDomainCertificateArn:
+        default: ACM Certificate ARN for given Domain Name
+      SlackInteractivityLambdaARN:
+        default: ARN of Slack Interactivity Lambda Function
+      SlackRequestVerifierLambdaARN:
+        default: ARN of Slack Requests Verifier Lambda Function
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  CloudWatchAlarmsSnsTopicARN:
+    Type: String
+    Description: SNS Topic ARN
+  SlackApiDomainName:
+    Type: String
+    Description: "The custom domain name for the API (e.g., api.myexample.com)"
+  SlackApiDomainCertificateArn:
+    Type: String
+    Description: "The ARN of the ACM certificate for the custom domain"
+  SlackInteractivityLambdaARN:
+    Type: String
+    Description: Lambda Function ARN for handling Slack interactive events
+  SlackRequestVerifierLambdaARN:
+    Type: String
+    Description: Lambda Function ARN for verifying Slack requests
+
+Conditions:
+  CreateSlackApiDomain: !Not [ !Equals [ !Ref SlackApiDomainName, "" ] ]
+
+Resources:
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-api-gateway-cloudwatch"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "apigateway.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: ApiGatewayCloudWatchLoggingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                Resource: "*"
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${ProjectName}-slack-interactivity-api"
+      Description: API to handle Slack interactive events
+
+  SlackInteractivityResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: interactivity
+      RestApiId: !Ref ApiGatewayRestApi
+
+  SlackCustomAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      Name: SlackRequestAuthorizer
+      Type: REQUEST
+      IdentitySource: "method.request.header.X-Slack-Signature,method.request.header.X-Slack-Request-Timestamp"
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackRequestVerifierLambdaARN}/invocations"
+
+  SlackInteractivityMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref SlackInteractivityResource
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref SlackCustomAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackInteractivityLambdaARN}/invocations"
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiGatewayDeployment:
+    DependsOn: SlackInteractivityMethod
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: prod
+      Description: Production stage with access logging and detailed method settings
+      RestApiId: !Ref ApiGatewayRestApi
+      DeploymentId: !Ref ApiGatewayDeployment
+      MethodSettings:
+        - DataTraceEnabled: true
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: "/*"
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp",
+          "userAgent":"$context.identity.userAgent","status":"$context.status",
+          "protocol":"$context.protocol","resourcePath":"$context.resourcePath"}
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/${ProjectName}-logs"
+      RetentionInDays: 30
+
+  ApiGatewayUsagePlan:
+    DependsOn: ApiGatewayStage
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub "${ProjectName}-UsagePlan"
+      ApiStages:
+        - ApiId: !Ref ApiGatewayRestApi
+          Stage: "prod"
+      Throttle:
+        RateLimit: 100
+        BurstLimit: 50
+
+  ApiGatewayThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName} - Slack API Gateway Throttling Alarm"
+      AlarmDescription: !Sub "Alarm triggered when Slack API Gateway throttles too many requests (e.g., due to rate limiting or a potential DDoS attack). Investigate API usage patterns for API ${ApiGatewayRestApi}."
+      MetricName: ThrottledRequests
+      Namespace: "AWS/ApiGateway"
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: ApiName
+        Value: !Ref ApiGatewayRestApi
+      AlarmActions:
+      - !Ref CloudWatchAlarmsSnsTopicARN
+
+  SlackApiDomain:
+    Condition: CreateSlackApiDomain
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref SlackApiDomainName
+      RegionalCertificateArn: !Ref SlackApiDomainCertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  ApiGatewayBasePathMapping:
+    Condition: CreateSlackApiDomain
+    DependsOn:
+    - ApiGatewayStage
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      DomainName: !Ref SlackApiDomain
+      RestApiId: !Ref ApiGatewayRestApi
+      Stage: prod
+
+  Default4XXResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseType: DEFAULT_4XX
+      RestApiId: !Ref ApiGatewayRestApi
+      ResponseParameters:
+        gatewayresponse.header.Strict-Transport-Security: "'max-age=31536000; includeSubDomains'"
+        gatewayresponse.header.X-Content-Type-Options: "'nosniff'"
+        gatewayresponse.header.X-Frame-Options: "'DENY'"
+      ResponseTemplates:
+        application/json: '{"message": "$context.error.messageString"}'
+
+  Default5XXResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseType: DEFAULT_5XX
+      RestApiId: !Ref ApiGatewayRestApi
+      ResponseParameters:
+        gatewayresponse.header.Strict-Transport-Security: "'max-age=31536000; includeSubDomains'"
+        gatewayresponse.header.X-Content-Type-Options: "'nosniff'"
+        gatewayresponse.header.X-Frame-Options: "'DENY'"
+      ResponseTemplates:
+        application/json: '{"message": "$context.error.messageString"}'
+
+  SlackWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub "${ProjectName}-slack-webacl"
+      Scope: REGIONAL
+      Description: WAF Web ACL to protect API Gateway from HTTP Flood and DDoS
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "${ProjectName}-slack-webacl"
+      Rules:
+        - Name: "BlockIPReputation"
+          Priority: 0
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+              ExcludedRules: []
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "BlockIPReputation"
+        - Name: "BlockCommonThreats"
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules: []
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "BlockCommonThreats"
+        - Name: "BlockBadInputs"
+          Priority: 2
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "BlockBadInputs"
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+              ExcludedRules: []
+        - Name: "RateLimitRule"
+          Priority: 3
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "RateLimitRuleMetric"
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: IP
+              Limit: 500
+        - Name: "BlockSQLInjection"
+          Priority: 4
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "BlockSQLInjection"
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+              ExcludedRules: []
+        - Name: "BlockXSSAttack"
+          Priority: 5
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "BlockXSSAttackMetric"
+          Statement:
+            XssMatchStatement:
+              FieldToMatch:
+                AllQueryArguments: {}
+              TextTransformations:
+                - Priority: 1
+                  Type: NONE
+
+  WebACLAssociation:
+    DependsOn:
+    - ApiGatewayStage
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGatewayRestApi}/stages/prod"
+      WebACLArn: !GetAtt SlackWebACL.Arn
+
+Outputs:
+  InteractivityUrl:
+    Description: Slack Interactivity URL to configure in Slack settings
+    Value:
+      Fn::If:
+      - CreateSlackApiDomain
+      - !Sub "https://${SlackApiDomainName}/prod/interactivity"
+      - !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/interactivity"

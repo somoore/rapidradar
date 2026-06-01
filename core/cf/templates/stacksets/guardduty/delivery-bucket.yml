@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  This template creates the GuardDuty delivery S3 bucket
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  GuardDutyAdminAccountId:
+    Type: String
+    Description: Audit Account ID for GuardDuty Admin Delegation
+  GuardDutyDeliveryBucketPrefix:
+    Type: String
+    Description: Prefix for Guardduty Delivery S3 Bucket (will be suffixed with AccountId and Region)
+    Default: <ProjectName>-guardduty-delivery-s3-bucket
+
+Conditions:
+  GuardDutyAdminAccountIdEmpty: !Equals
+  - !Ref GuardDutyAdminAccountId
+  - ""
+
+Resources:
+  GuardDutyDeliveryS3Bucket:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${GuardDutyDeliveryBucketPrefix}-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !If [ GuardDutyAdminAccountIdEmpty, !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/DELIVERY_KEY_ARN:SecretString:GuardDutyDeliveryKeyArn:AWSCURRENT}}', !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${GuardDutyAdminAccountId}:secret:/${ProjectName}/DELIVERY_KEY_ARN:SecretString:GuardDutyDeliveryKeyArn:AWSCURRENT}}' ]
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: True
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      VersioningConfiguration:
+        Status: Enabled
+
+  GuardDutyDeliveryS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref GuardDutyDeliveryS3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: DenyPutObjectUnlessGuardDuty
+            Effect: Deny
+            Action: s3:PutObject
+            Condition:
+              ForAnyValue:StringNotEquals:
+                aws:CalledVia: guardduty.amazonaws.com
+            Resource:
+              - !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}
+              - !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}/*
+            Principal: '*'
+          - Sid: SecureTransport
+            Effect: Deny
+            Action: 's3:*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+            Resource:
+              - !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}
+              - !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}/*
+            Principal: '*'
+          - Sid: AWSBucketPermissionsCheck
+            Effect: Allow
+            Action:
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}
+            Principal:
+              Service:
+                - guardduty.amazonaws.com
+          - Sid: AWSBucketDelivery
+            Effect: Allow
+            Action: s3:PutObject
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+            Resource: !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}/*
+            Principal:
+              Service:
+                - guardduty.amazonaws.com
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Action: s3:PutObject
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+            Resource: !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}/*
+            Principal:
+              Service:
+                - guardduty.amazonaws.com
+          - Sid: DenyIncorrectEncryptionHeader
+            Effect: Deny
+            Action: s3:PutObject
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !If [ GuardDutyAdminAccountIdEmpty, !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/DELIVERY_KEY_ARN:SecretString:GuardDutyDeliveryKeyArn:AWSCURRENT}}', !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${GuardDutyAdminAccountId}:secret:/${ProjectName}/DELIVERY_KEY_ARN:SecretString:GuardDutyDeliveryKeyArn:AWSCURRENT}}' ]
+            Resource: !Sub arn:aws:s3:::${GuardDutyDeliveryS3Bucket}/*
+            Principal:
+              Service:
+                - guardduty.amazonaws.com
+
+Outputs:
+  GuardDutyDeliveryS3Bucket:
+    Description: GuardDuty Delivery S3 Bucket
+    Value: !Ref GuardDutyDeliveryS3Bucket

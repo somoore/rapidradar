@@ -1,0 +1,2756 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates Step Functions
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+      - Label:
+          default: Lambda Functions
+        Parameters:
+          - EventsProcessorLambdaARN
+          - GetSSOUserDetailsLambdaARN
+          - SSOUserReportGeneratorLambdaARN
+          - SSOUserReportWaiterLambdaARN
+          - SSOUserReportsCompilerLambdaARN
+          - StackSetCreationWaiterLambdaARN
+          - GetSSOUsersLambdaARN
+          - GetChildDeploymentAccountsLambdaARN
+          - GetDeploymentRegionsLambdaARN
+          - ManipulateInputsAccountsLambdaARN
+          - ManipulateInputsRegionsLambdaARN
+          - GetSSOUsersLatestActivityLambdaARN
+          - SSOUsersDataRefinerLambdaARN
+          - SSOUsersDataStorerIpCorrelationLambdaARN
+          - SSOUsersDataStorerIpHistoryLambdaARN
+          - SSMInstanceAutomationLambdaARN
+          - LambdaFunctionTriggererLambdaARN
+          - GetDeploymentTargetAccountsLambdaARN
+          - GetActiveInstancesLambdaARN
+          - GetActiveInstancesDetailsLambdaARN
+          - GetActiveEKSClustersLambdaARN
+          - GetActiveEKSClustersDetailsLambdaARN
+          - GetActiveRDSClustersLambdaARN
+          - GetActiveRDSClustersDetailsLambdaARN
+          - GetActiveRDSInstancesLambdaARN
+          - GetActiveRDSInstancesDetailsLambdaARN
+          - GetActiveEFSFileSystemsLambdaARN
+          - GetActiveEFSFileSystemsDetailsLambdaARN
+          - GetAllIAMUsersActiveKeyPairsLambdaARN
+          - SendActiveResourcesEventsLambdaARN
+          - TagEC2InstancesLambdaARN
+          - TagEKSClustersLambdaARN
+          - TagRDSClustersInstancesLambdaARN
+          - TagEFSLambdaARN
+          - GetVPCsLambdaARN
+          - GetSubnetsLambdaARN
+          - GetEBSVolumesLambdaARN
+          - GetEIPsLambdaARN
+          - GetEbsSnapshotsLambdaARN
+          - GetAMIsLambdaARN
+          - TagEC2ResourceLambdaARN
+          - GetFsxFileSystemsLambdaARN
+          - TagFsxLambdaARN
+          - GetSecretsLambdaARN
+          - TagSecretsLambdaARN
+          - GetBackupPlansLambdaARN
+          - TagBackupPlansLambdaARN
+          - GetLoadBalancersLambdaARN
+          - TagLoadbalancersLambdaARN
+      - Label:
+          default: Post Deploy SSM Automation
+        Parameters:
+          - AddSupportforPostDeploySSMAutomation
+      - Label:
+          default: IAM Secret-Access KeyPair Access Tracker Project
+        Parameters:
+          - AddSupportforIAMKeyPairAccessTracker
+      - Label:
+          default: CMDB Project
+        Parameters:
+          - AddSupportforCMDB
+      - Label:
+          default: User Offboarding Workflow Project
+        Parameters:
+          - AddSupportforUserOffboardingWorkflow
+      - Label:
+          default: IP Tracker Project
+        Parameters:
+          - AddSupportforIPTracker
+          - SSOUsersIpDataBucketARN
+      - Label:
+          default: Auto-Tagger
+        Parameters:
+          - TagVPCs
+          - TagSubnets
+          - TagEbsVolumes
+          - TagEIPs
+          - TagEbsSnapshots
+          - TagAMIs
+          - TagEC2Instances
+          - TagEksClusters
+          - TagRDSClusterInstances
+          - TagEFS
+          - TagFSX
+          - TagSecrets
+          - TagBackupPlans
+          - TagLoadbalancers
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      EventsProcessorLambdaARN:
+        default: ARN of Events Processor Lambda Function
+      GetSSOUserDetailsLambdaARN:
+        default: ARN of SSO User Details Extractor Lambda Function
+      SSOUserReportGeneratorLambdaARN:
+        default: ARN of SSO User Report Generator Lambda Function
+      SSOUserReportWaiterLambdaARN:
+        default: ARN of SSO User Report Waiter Lambda Function
+      SSOUserReportsCompilerLambdaARN:
+        default: ARN of SSO User Report Compiler Lambda Function
+      StackSetCreationWaiterLambdaARN:
+        default: ARN of StackSet Creation Waiter Lambda Function
+      GetSSOUsersLambdaARN:
+        default: ARN of Get SSO Users Lambda Function
+      GetChildDeploymentAccountsLambdaARN:
+        default: ARN of Get Deployment Accounts Lambda Function
+      GetDeploymentRegionsLambdaARN:
+        default: ARN of Get Deployment Regions Lambda Function
+      ManipulateInputsAccountsLambdaARN:
+        default: ARN of Manipulate Inputs Accounts Lambda Function
+      ManipulateInputsRegionsLambdaARN:
+        default: ARN of Manipulate Inputs Regions Lambda Function
+      GetSSOUsersLatestActivityLambdaARN:
+        default: ARN of Get SSO Users Latest Activity Lambda Function
+      SSOUsersDataRefinerLambdaARN:
+        default: ARN of SSO Users Data Refiner Lambda Function
+      SSOUsersDataStorerIpCorrelationLambdaARN:
+        default: ARN of SSO Users Data Storer for IP Correlation Lambda Function
+      SSOUsersDataStorerIpHistoryLambdaARN:
+        default: ARN of SSO Users Data Storer for IP History Lambda Function
+      SSMInstanceAutomationLambdaARN:
+        default: ARN of SSM Instance Automation Lambda Function
+      LambdaFunctionTriggererLambdaARN:
+        default: ARN of Lambda Function Triggerer Lambda Function
+      GetDeploymentTargetAccountsLambdaARN:
+        default: ARN of Get Deployment Target Accounts Lambda Function
+      GetActiveInstancesLambdaARN:
+        default: ARN of Get Active EC2 Instances Lambda Function
+      GetActiveInstancesDetailsLambdaARN:
+        default: ARN of Get Active EC2 Instances Details Lambda Function
+      GetActiveEKSClustersLambdaARN:
+        default: ARN of Get Active EKS Clusters Lambda Function
+      GetActiveEKSClustersDetailsLambdaARN:
+        default: ARN of Get Active EKS Clusters Details Lambda Function
+      GetActiveRDSClustersLambdaARN:
+        default: ARN of Get Active RDS Clusters Lambda Function
+      GetActiveRDSClustersDetailsLambdaARN:
+        default: ARN of Get Active RDS Clusters Details Lambda Function
+      GetActiveRDSInstancesLambdaARN:
+        default: ARN of Get Active RDS Instances Lambda Function
+      GetActiveRDSInstancesDetailsLambdaARN:
+        default: ARN of Get Active RDS Instances Details Lambda Function
+      GetActiveEFSFileSystemsLambdaARN:
+        default: ARN of Get Active EFS FileSystems Lambda Function
+      GetActiveEFSFileSystemsDetailsLambdaARN:
+        default: ARN of Get Active EFS FileSystems Details Lambda Function
+      GetAllIAMUsersActiveKeyPairsLambdaARN:
+        default: ARN of Get IAM Users Active KeyPairs Lambda Function
+      SendActiveResourcesEventsLambdaARN:
+        default: ARN of Send Active Resources Events Lambda Function
+      TagEC2InstancesLambdaARN:
+        default: ARN of EC2 Instances Tagger Lambda Function
+      TagEKSClustersLambdaARN:
+        default: ARN of EKS Clusters Tagger Lambda Function
+      TagRDSClustersInstancesLambdaARN:
+        default: ARN of RDS Clusters and Instances Tagger Lambda Function
+      TagEFSLambdaARN:
+        default: ARN of EFS FileSystem Tagger Lambda Function
+      GetVPCsLambdaARN:
+        default: ARN of VPC Tagger Lambda Function
+      GetSubnetsLambdaARN:
+        default: ARN of Subnets Tagger Lambda Function
+      GetEBSVolumesLambdaARN:
+        default: ARN of EBS Volumes Tagger Lambda Function
+      GetEIPsLambdaARN:
+        default: ARN of Elastic IPs Tagger Lambda Function
+      GetEbsSnapshotsLambdaARN:
+        default: ARN of EBS Snapshots Tagger Lambda Function
+      GetAMIsLambdaARN:
+        default: ARN of AMIs Tagger Lambda Function
+      TagEC2ResourceLambdaARN:
+        default: ARN of EC2 Resource Tagger Lambda Function
+      GetFsxFileSystemsLambdaARN:
+        default: ARN of Get FSX FileSystems Lambda Function
+      TagFsxLambdaARN:
+        default: ARN of FSX FileSystem Tagger Lambda Function
+      GetSecretsLambdaARN:
+        default: ARN of Get SecretManager Secrets Lambda Function
+      TagSecretsLambdaARN:
+        default: ARN of SecretsManager Secrets Tagger Lambda Function
+      GetBackupPlansLambdaARN:
+        default: ARN of Get Backup Plans Lambda Function
+      TagBackupPlansLambdaARN:
+        default: ARN of Backup Plans Tagger Lambda Function
+      GetLoadBalancersLambdaARN:
+        default: ARN of Get LoadBalancers Lambda Function
+      TagLoadbalancersLambdaARN:
+        default: ARN of LoadBalancers Tagger Lambda Function
+      AddSupportforPostDeploySSMAutomation:
+        default: Enable Post Deploy SSM Automation Project?
+      AddSupportforIAMKeyPairAccessTracker:
+        default: Deploy IAM Secret-Access KeyPair Access Tracker Project?
+      AddSupportforCMDB:
+        default: Deploy CMDB Project?
+      AddSupportforUserOffboardingWorkflow:
+        default: Deploy User Offboarding Workflow Project?
+      AddSupportforIPTracker:
+        default: Deploy IP Tracker Project?
+      SSOUsersIpDataBucketARN:
+        default: ARN of SSOUsersIpData Bucket
+      TagVPCs:
+        default: Enable auto-tagger for VPCs?
+      TagSubnets:
+        default: Enable auto-tagger for Subnets?
+      TagEbsVolumes:
+        default: Enable auto-tagger for EBS Volumes?
+      TagEIPs:
+        default: Enable auto-tagger for Elastic IPs?
+      TagEbsSnapshots:
+        default: Enable auto-tagger for EBS Snapshots?
+      TagAMIs:
+        default: Enable auto-tagger for AMIs?
+      TagEC2Instances:
+        default: Enable auto-tagger for EC2 Instances?
+      TagEksClusters:
+        default: Enable auto-tagger for EKS Clusters?
+      TagRDSClusterInstances:
+        default: Enable auto-tagger for RDS Clusters and Instances?
+      TagEFS:
+        default: Enable auto-tagger for EFS?
+      TagFSX:
+        default: Enable auto-tagger for FSX?
+      TagSecrets:
+        default: Enable auto-tagger for SecretsManager Secrets?
+      TagBackupPlans:
+        default: Enable auto-tagger for Backup Plans?
+      TagLoadbalancers:
+        default: Enable auto-tagger for LoadBalancers?
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  GetSSOUserDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  EventsProcessorLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUserReportGeneratorLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUserReportWaiterLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUserReportsCompilerLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  StackSetCreationWaiterLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetSSOUsersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetChildDeploymentAccountsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetDeploymentRegionsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  ManipulateInputsAccountsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  ManipulateInputsRegionsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetSSOUsersLatestActivityLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUsersDataRefinerLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUsersDataStorerIpCorrelationLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSOUsersDataStorerIpHistoryLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SSMInstanceAutomationLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  LambdaFunctionTriggererLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetDeploymentTargetAccountsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveInstancesLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveInstancesDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveEKSClustersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveEKSClustersDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveRDSClustersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveRDSClustersDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveRDSInstancesLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveRDSInstancesDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveEFSFileSystemsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetActiveEFSFileSystemsDetailsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetAllIAMUsersActiveKeyPairsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  SendActiveResourcesEventsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagEC2InstancesLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagEKSClustersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagRDSClustersInstancesLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagEFSLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetVPCsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetSubnetsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetEBSVolumesLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetEIPsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetEbsSnapshotsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetAMIsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagEC2ResourceLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetFsxFileSystemsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagFsxLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetSecretsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagSecretsLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetBackupPlansLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagBackupPlansLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  GetLoadBalancersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  TagLoadbalancersLambdaARN:
+    Type: String
+    Description: Lambda Function ARN
+  AddSupportforPostDeploySSMAutomation:
+    Type: String
+    Description: Set to True if you want to enable Post Deploy SSM Automation Project
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIAMKeyPairAccessTracker:
+    Type: String
+    Description: Set to True if you want IAM Secret-Access KeyPair Access Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforCMDB:
+    Type: String
+    Description: Set to True if you want CMDB project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforUserOffboardingWorkflow:
+    Type: String
+    Description: Set to True if you want User Offboarding Workflow Project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIPTracker:
+    Type: String
+    Description: Set to True if you want IP Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  SSOUsersIpDataBucketARN:
+    Type: String
+    Description: S3 Bucket ARN
+  TagVPCs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for VPCs on creation
+  TagSubnets:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Subnets on creation
+  TagEbsVolumes:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EBS Volumes on creation
+  TagEIPs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Elastic IPs on allocation
+  TagEbsSnapshots:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EBS Snapshots on creation
+  TagAMIs:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for AMIs on creation
+  TagEC2Instances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EC2 Instances on launch
+  TagEksClusters:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EKS Clusters on creation
+  TagRDSClusterInstances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for RDS Clusters and Instances on creation
+  TagEFS:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for EFS on filesystem creation
+  TagFSX:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for FSX on filesystem creation
+  TagSecrets:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for SecretsManager on secret creation
+  TagBackupPlans:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for Backup Plans on creation
+  TagLoadbalancers:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to enable auto-tagger for LoadBalancers on creation
+
+Conditions:
+  DeploySSMAutomationProject: !Equals
+  - !Ref AddSupportforPostDeploySSMAutomation
+  - true
+  DeployUserOffboardingWorkflowProject: !Equals
+  - !Ref AddSupportforUserOffboardingWorkflow
+  - true
+  DeployIPTrackerProject: !Equals
+  - !Ref AddSupportforIPTracker
+  - true
+  DeployIAMKeyPairAccessTrackerProject: !Equals
+  - !Ref AddSupportforIAMKeyPairAccessTracker
+  - true
+  DeployCMDBProject: !Equals
+  - !Ref AddSupportforCMDB
+  - true
+
+  AutoTagVPCs: !Equals
+  - !Ref TagVPCs
+  - true
+  AutoTagSubnets: !Equals
+  - !Ref TagSubnets
+  - true
+  AutoTagEbsVolumes: !Equals
+  - !Ref TagEbsVolumes
+  - true
+  AutoTagEIPs: !Equals
+  - !Ref TagEIPs
+  - true
+  AutoTagEbsSnapshots: !Equals
+  - !Ref TagEbsSnapshots
+  - true
+  AutoTagAMIs: !Equals
+  - !Ref TagAMIs
+  - true
+  AutoTagFSX: !Equals
+  - !Ref TagFSX
+  - true
+  AutoTagSecrets: !Equals
+  - !Ref TagSecrets
+  - true
+  AutoTagBackupPlans: !Equals
+  - !Ref TagBackupPlans
+  - true
+  AutoTagLoadbalancers: !Equals
+  - !Ref TagLoadbalancers
+  - true
+  AutoTagEC2Instances: !Equals
+  - !Ref TagEC2Instances
+  - true
+  AutoTagEKSClusters: !Equals
+  - !Ref TagEksClusters
+  - true
+  AutoTagRDSClustersInstances: !Equals
+  - !Ref TagRDSClusterInstances
+  - true
+  AutoTagEFS: !Equals
+  - !Ref TagEFS
+  - true
+
+  CreateEC2TaggingResources: !Or
+  - !Condition AutoTagVPCs
+  - !Condition AutoTagSubnets
+  - !Condition AutoTagEbsVolumes
+  - !Condition AutoTagEIPs
+  - !Condition AutoTagEbsSnapshots
+  - !Condition AutoTagAMIs
+  - !Condition AutoTagEC2Instances
+
+  CreateAutoTaggerResources0: !Or
+  - !Condition AutoTagVPCs
+  - !Condition AutoTagSubnets
+  - !Condition AutoTagEbsVolumes
+  - !Condition AutoTagEIPs
+  - !Condition AutoTagEbsSnapshots
+  - !Condition AutoTagAMIs
+  - !Condition AutoTagEC2Instances
+  - !Condition AutoTagEKSClusters
+  - !Condition AutoTagRDSClustersInstances
+  - !Condition AutoTagEFS
+  CreateAutoTaggerResources1: !Or
+  - !Condition AutoTagFSX
+  - !Condition AutoTagSecrets
+  - !Condition AutoTagBackupPlans
+  - !Condition AutoTagLoadbalancers
+
+  CreateAutoTaggerResources: !Or
+  - !Condition CreateAutoTaggerResources0
+  - !Condition CreateAutoTaggerResources1
+
+  CreateCaptureExistingResources: !Or
+  - !Condition DeployCMDBProject
+  - !Condition DeployIAMKeyPairAccessTrackerProject
+
+Resources:
+  SSOUserReportGeneratorSfnRole:
+    Condition: DeployUserOffboardingWorkflowProject
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-sso-user-resources-report-generator-sfn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: LambdaInvocationPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - !Sub "${GetSSOUserDetailsLambdaARN}:*"
+            - !Ref GetSSOUserDetailsLambdaARN
+            - !Sub "${SSOUserReportGeneratorLambdaARN}:*"
+            - !Ref SSOUserReportGeneratorLambdaARN
+            - !Sub "${SSOUserReportWaiterLambdaARN}:*"
+            - !Ref SSOUserReportWaiterLambdaARN
+            - !Sub "${SSOUserReportsCompilerLambdaARN}:*"
+            - !Ref SSOUserReportsCompilerLambdaARN
+      - PolicyName: LogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CreateLogs
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:GetLogDelivery
+            - logs:UpdateLogDelivery
+            - logs:ListLogDeliveries
+            - logs:PutResourcePolicy
+            - logs:DescribeResourcePolicies
+            - logs:DescribeLogGroups
+            Resource: "*"
+
+  SSOUserReportGeneratorSfnLogGroup:
+    Condition: DeployUserOffboardingWorkflowProject
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/stepfunction/${ProjectName}-sso-user-resources-report-generator"
+      RetentionInDays: 14
+
+  SSOUserReportGeneratorSfn:
+    Condition: DeployUserOffboardingWorkflowProject
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${ProjectName}-sso-user-resources-report-generator
+      RoleArn: !GetAtt SSOUserReportGeneratorSfnRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt SSOUserReportGeneratorSfnLogGroup.Arn
+      DefinitionString: !Sub |-
+          {
+            "Comment": "Resources Report Generator for Disabled/Deleted SSO User",
+            "StartAt": "GetOrgDetails",
+            "States": {
+              "GetOrgDetails": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "OutputPath": "$.Payload",
+                "Parameters": {
+                  "Payload.$": "$",
+                  "FunctionName": "${GetSSOUserDetailsLambdaARN}:$LATEST"
+                },
+                "Retry": [
+                  {
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                  }
+                ],
+                "Next": "GenerateUserResourcesReport"
+              },
+              "GenerateUserResourcesReport": {
+                "Type": "Map",
+                "ItemProcessor": {
+                  "ProcessorConfig": {
+                    "Mode": "DISTRIBUTED",
+                    "ExecutionType": "STANDARD"
+                  },
+                  "StartAt": "Generate Report",
+                  "States": {
+                    "Generate Report": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${SSOUserReportGeneratorLambdaARN}:$LATEST"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "IntervalSeconds": 10,
+                          "MaxAttempts": 15,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "Waiter"
+                    },
+                    "Waiter": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${SSOUserReportWaiterLambdaARN}:$LATEST"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException",
+                            "Lambda.TooManyRequestsException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "Pass"
+                    },
+                    "Pass": {
+                      "Type": "Pass",
+                      "Next": "Choice"
+                    },
+                    "Choice": {
+                      "Type": "Choice",
+                      "Choices": [
+                        {
+                          "Variable": "$.jobCompleted",
+                          "BooleanEquals": false,
+                          "Next": "Wait"
+                        }
+                      ],
+                      "Default": "End"
+                    },
+                    "Wait": {
+                      "Type": "Wait",
+                      "Seconds": 180,
+                      "Next": "Waiter"
+                    },
+                    "End": {
+                      "Type": "Pass",
+                      "End": true
+                    }
+                  }
+                },
+                "Next": "HandleReports",
+                "MaxConcurrency": 10,
+                "ItemsPath": "$.orgAccountRegion"
+              },
+              "HandleReports": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "OutputPath": "$.Payload",
+                "Parameters": {
+                  "Payload.$": "$",
+                  "FunctionName": "${SSOUserReportsCompilerLambdaARN}:$LATEST"
+                },
+                "Retry": [
+                  {
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                  }
+                ],
+                "End": true
+              }
+            }
+          }
+
+  FetchStoreSSOUsersIpDataSfnRole:
+    Condition: DeployIPTrackerProject
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-fetch-and-store-sso-users-aws-ip-data
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudWatchLogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CreateLogs
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:GetLogDelivery
+            - logs:UpdateLogDelivery
+            - logs:ListLogDeliveries
+            - logs:PutResourcePolicy
+            - logs:DescribeResourcePolicies
+            - logs:DescribeLogGroups
+            Resource: "*"
+      - PolicyName: S3ReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: S3Access
+            Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub "${SSOUsersIpDataBucketARN}/*"
+      - PolicyName: StepFunctionsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SfnStartExecution
+            Effect: Allow
+            Action: states:StartExecution
+            Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ProjectName}-fetch-and-store-sso-users-aws-ip-data"
+          - Sid: SfnAccess
+            Effect: Allow
+            Action:
+            - states:DescribeExecution
+            - states:StopExecution
+            Resource: "*"
+      - PolicyName: EventBridgeWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EventsAccess
+            Effect: Allow
+            Action:
+            - events:PutTargets
+            - events:PutRule
+            - events:DescribeRule
+            Resource: "*"
+      - PolicyName: AllowFunctionsInvocations
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - !Sub "${StackSetCreationWaiterLambdaARN}:*"
+            - !Ref StackSetCreationWaiterLambdaARN
+            - !Sub "${GetSSOUsersLambdaARN}:*"
+            - !Ref GetSSOUsersLambdaARN
+            - !Sub "${GetChildDeploymentAccountsLambdaARN}:*"
+            - !Ref GetChildDeploymentAccountsLambdaARN
+            - !Sub "${GetDeploymentRegionsLambdaARN}:*"
+            - !Ref GetDeploymentRegionsLambdaARN
+            - !Sub "${ManipulateInputsAccountsLambdaARN}:*"
+            - !Ref ManipulateInputsAccountsLambdaARN
+            - !Sub "${ManipulateInputsRegionsLambdaARN}:*"
+            - !Ref ManipulateInputsRegionsLambdaARN
+            - !Sub "${GetSSOUsersLatestActivityLambdaARN}:*"
+            - !Ref GetSSOUsersLatestActivityLambdaARN
+            - !Sub "${SSOUsersDataRefinerLambdaARN}:*"
+            - !Ref SSOUsersDataRefinerLambdaARN
+            - !Sub "${SSOUsersDataStorerIpCorrelationLambdaARN}:*"
+            - !Ref SSOUsersDataStorerIpCorrelationLambdaARN
+            - !Sub "${SSOUsersDataStorerIpHistoryLambdaARN}:*"
+            - !Ref SSOUsersDataStorerIpHistoryLambdaARN
+
+  FetchStoreSSOUsersIpDataSfnLogGroup:
+    Condition: DeployIPTrackerProject
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/stepfunction/${ProjectName}-fetch-and-store-sso-users-aws-ip-data"
+      RetentionInDays: 14
+
+  FetchAndStoreSSOUsersAWSIpDataSfn:
+    Condition: DeployIPTrackerProject
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${ProjectName}-fetch-and-store-sso-users-aws-ip-data
+      RoleArn: !GetAtt FetchStoreSSOUsersIpDataSfnRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt FetchStoreSSOUsersIpDataSfnLogGroup.Arn
+      DefinitionString: !Sub |-
+        {
+          "Comment": "Fetches AWS Source IP address for all SSO Users from last 24 hours activity",
+          "StartAt": "Wait for Creation of Child StackSets",
+          "States": {
+            "Wait for Creation of Child StackSets": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "${StackSetCreationWaiterLambdaARN}:$LATEST"
+              },
+              "Next": "Choice"
+            },
+            "Choice": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.WaitTime",
+                  "NumericEquals": 0,
+                  "Next": "Parallel"
+                }
+              ],
+              "Default": "Wait"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "SecondsPath": "$.WaitTime",
+              "Next": "Wait for Creation of Child StackSets"
+            },
+            "Parallel": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "Get SSO Users",
+                  "States": {
+                    "Get SSO Users": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${GetSSOUsersLambdaARN}:$LATEST"
+                      },
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "Get Active AWS Accounts",
+                  "States": {
+                    "Get Active AWS Accounts": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${GetChildDeploymentAccountsLambdaARN}:$LATEST"
+                      },
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "Get Active Regions",
+                  "States": {
+                    "Get Active Regions": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${GetDeploymentRegionsLambdaARN}:$LATEST"
+                      },
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "Next": "Fetch for each user"
+            },
+            "Fetch for each user": {
+              "Type": "Map",
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "STANDARD"
+                },
+                "StartAt": "ManipulateInput-Accounts",
+                "States": {
+                  "ManipulateInput-Accounts": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "OutputPath": "$.Payload",
+                    "Parameters": {
+                      "Payload.$": "$",
+                      "FunctionName": "${ManipulateInputsAccountsLambdaARN}:$LATEST"
+                    },
+                    "Next": "Check each account"
+                  },
+                  "Check each account": {
+                    "Type": "Map",
+                    "ItemProcessor": {
+                      "ProcessorConfig": {
+                        "Mode": "INLINE"
+                      },
+                      "StartAt": "ManipulateInput-Regions",
+                      "States": {
+                        "ManipulateInput-Regions": {
+                          "Type": "Task",
+                          "Resource": "arn:aws:states:::lambda:invoke",
+                          "OutputPath": "$.Payload",
+                          "Parameters": {
+                            "Payload.$": "$",
+                            "FunctionName": "${ManipulateInputsRegionsLambdaARN}:$LATEST"
+                          },
+                          "Next": "Check each region"
+                        },
+                        "Check each region": {
+                          "Type": "Map",
+                          "ItemProcessor": {
+                            "ProcessorConfig": {
+                              "Mode": "INLINE"
+                            },
+                            "StartAt": "Fetch Latest Activity",
+                            "States": {
+                              "Fetch Latest Activity": {
+                                "Type": "Task",
+                                "Resource": "arn:aws:states:::lambda:invoke",
+                                "OutputPath": "$.Payload",
+                                "Parameters": {
+                                  "Payload.$": "$",
+                                  "FunctionName": "${GetSSOUsersLatestActivityLambdaARN}:$LATEST"
+                                },
+                                "End": true
+                              }
+                            }
+                          },
+                          "End": true
+                        }
+                      }
+                    },
+                    "Next": "Data Refiner"
+                  },
+                  "Data Refiner": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "OutputPath": "$.Payload",
+                    "Parameters": {
+                      "Payload.$": "$",
+                      "FunctionName": "${SSOUsersDataRefinerLambdaARN}:$LATEST"
+                    },
+                    "Next": "Store Data"
+                  },
+                  "Store Data": {
+                    "Type": "Parallel",
+                    "End": true,
+                    "Branches": [
+                      {
+                        "StartAt": "IP Correlation",
+                        "States": {
+                          "IP Correlation": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${SSOUsersDataStorerIpCorrelationLambdaARN}:$LATEST"
+                            },
+                            "End": true
+                          }
+                        }
+                      },
+                      {
+                        "StartAt": "IP HIstory",
+                        "States": {
+                          "IP HIstory": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${SSOUsersDataStorerIpHistoryLambdaARN}:$LATEST"
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "End": true,
+              "Label": "Fetchforeachuser",
+              "MaxConcurrency": 2,
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:getObject",
+                "ReaderConfig": {
+                  "InputType": "JSON"
+                },
+                "Parameters": {
+                  "Bucket.$": "$[0].BucketName",
+                  "Key.$": "$[0].BucketKey"
+                }
+              }
+            }
+          }
+        }
+
+  SSOUsersDataUpdate:
+    Condition: DeployIPTrackerProject
+    DependsOn: FetchAndStoreSSOUsersAWSIpDataSfn
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: lambda
+      ServiceToken: !Ref LambdaFunctionTriggererLambdaARN
+      KwArgs:
+        FunctionName: !Ref EventsProcessorLambdaARN
+        InvocationType: 'Event'
+        Payload: {
+          'detail': {},
+          'detail-type': 'Custom Event',
+          'resources': [ 'sso-users-data-updater' ]
+        }
+
+  SSMInstanceAutomationSfnRole:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ssm-instance-automation-sfn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: LogsAccessPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:GetLogDelivery
+            - logs:UpdateLogDelivery
+            - logs:ListLogDeliveries
+            - logs:PutResourcePolicy
+            - logs:DescribeResourcePolicies
+            - logs:DescribeLogGroups
+            Resource: "*"
+      - PolicyName: LambdaAccessPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - !Sub "${SSMInstanceAutomationLambdaARN}:*"
+            - !Ref SSMInstanceAutomationLambdaARN
+
+  SSMInstanceAutomationSfnLogGroup:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/stepfunction/${ProjectName}-ssm-instance-automation"
+      RetentionInDays: 14
+
+  SSMInstanceAutomationSfn:
+    Condition: DeploySSMAutomationProject
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${ProjectName}-ssm-instance-automation
+      RoleArn: !GetAtt SSMInstanceAutomationSfnRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt SSMInstanceAutomationSfnLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Handles Lambda Function for EC2 Instance Automation",
+          "StartAt": "Start Automation",
+          "States": {
+            "Start Automation": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "FunctionName": "${SSMInstanceAutomationLambdaARN}:$LATEST",
+                "Payload.$": "$"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Choice"
+            },
+            "Choice": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.WaitTime",
+                  "NumericEquals": 0,
+                  "Next": "Success"
+                }
+              ],
+              "Default": "Wait"
+            },
+            "Success": {
+              "Type": "Succeed"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "SecondsPath": "$.WaitTime",
+              "Next": "Start Automation"
+            }
+          }
+        }
+
+  CaptureExistingResourcesSfnRole:
+    Condition: CreateCaptureExistingResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-capture-existing-resources
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudWatchLogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CreateLogs
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:GetLogDelivery
+            - logs:UpdateLogDelivery
+            - logs:ListLogDeliveries
+            - logs:PutResourcePolicy
+            - logs:DescribeResourcePolicies
+            - logs:DescribeLogGroups
+            Resource: "*"
+      - PolicyName: StepFunctionsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SfnStartExecution
+            Effect: Allow
+            Action: states:StartExecution
+            Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ProjectName}-capture-existing-resources"
+          - Sid: SfnAccess
+            Effect: Allow
+            Action:
+            - states:DescribeExecution
+            - states:StopExecution
+            Resource: "*"
+      - PolicyName: AllowFunctionsInvocations
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - !Sub "${StackSetCreationWaiterLambdaARN}:*"
+            - !Ref StackSetCreationWaiterLambdaARN
+            - !Sub "${GetDeploymentTargetAccountsLambdaARN}:*"
+            - !Ref GetDeploymentTargetAccountsLambdaARN
+            - !If [DeployCMDBProject, !Sub "${GetActiveInstancesLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveInstancesLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveInstancesDetailsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveInstancesDetailsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveEKSClustersLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveEKSClustersLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveEKSClustersDetailsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveEKSClustersDetailsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveRDSClustersLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveRDSClustersLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveRDSClustersDetailsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveRDSClustersDetailsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveRDSInstancesLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveRDSInstancesLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveRDSInstancesDetailsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveRDSInstancesDetailsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveEFSFileSystemsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveEFSFileSystemsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Sub "${GetActiveEFSFileSystemsDetailsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployCMDBProject, !Ref GetActiveEFSFileSystemsDetailsLambdaARN, !Ref AWS::NoValue]
+            - !If [DeployIAMKeyPairAccessTrackerProject, !Sub "${GetAllIAMUsersActiveKeyPairsLambdaARN}:*", !Ref AWS::NoValue]
+            - !If [DeployIAMKeyPairAccessTrackerProject, !Ref GetAllIAMUsersActiveKeyPairsLambdaARN, !Ref AWS::NoValue]
+            - !Sub "${SendActiveResourcesEventsLambdaARN}:*"
+            - !Ref SendActiveResourcesEventsLambdaARN
+
+  CaptureExistingResourcesSfnLogGroup:
+    Condition: CreateCaptureExistingResources
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/stepfunction/${ProjectName}-capture-existing-resources"
+      RetentionInDays: 14
+
+  CaptureExistingResourcesSfn:
+    Condition: CreateCaptureExistingResources
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${ProjectName}-capture-existing-resources
+      RoleArn: !GetAtt CaptureExistingResourcesSfnRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt CaptureExistingResourcesSfnLogGroup.Arn
+      DefinitionString:
+        Fn::Join:
+          - ''
+          - - !Sub |-
+              {
+                "Comment": "Captures Existing Resources",
+                "StartAt": "Get Deployment Targets Details",
+                "States": {
+                  "Get Deployment Targets Details": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "OutputPath": "$.Payload",
+                    "Parameters": {
+                      "Payload.$": "$",
+                      "FunctionName": "${GetDeploymentTargetAccountsLambdaARN}:$LATEST"
+                    },
+                    "Next": "Check each account"
+                  },
+                  "Check each account": {
+                    "Type": "Map",
+                    "ItemProcessor": {
+                      "ProcessorConfig": {
+                        "Mode": "INLINE"
+                      },
+                      "StartAt": "TransformInput",
+                      "States": {
+                        "TransformInput": {
+                          "Type": "Map",
+                          "ItemsPath": "$.Regions",
+                          "Parameters": {
+                            "AccountId.$": "$.AccountId",
+                            "Region.$": "$$.Map.Item.Value"
+                          },
+                          "ResultPath": "$",
+                          "Iterator": {
+                            "StartAt": "CreateRegionItem",
+                            "States": {
+                              "CreateRegionItem": {
+                                "Type": "Pass",
+                                "End": true
+                              }
+                            }
+                          },
+                          "Next": "Parallel"
+                        },
+                        "Parallel": {
+                          "Type": "Parallel",
+                          "Branches": [
+            - Fn::Join:
+                - ','
+                - - Fn::If:
+                    - DeployCMDBProject
+                    - !Sub |-
+                      {
+                        "StartAt": "Check each region",
+                        "States": {
+                          "Check each region": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "INLINE"
+                              },
+                              "StartAt": "Process all resources in parallel",
+                              "States": {
+                                "Process all resources in parallel": {
+                                  "Type": "Parallel",
+                                  "Branches": [
+                                    {
+                                      "StartAt": "Get Active Instances",
+                                      "States": {
+                                        "Get Active Instances": {
+                                          "Type": "Task",
+                                          "Resource": "arn:aws:states:::lambda:invoke",
+                                          "OutputPath": "$.Payload",
+                                          "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${GetActiveInstancesLambdaARN}:$LATEST"
+                                          },
+                                          "Next": "Get All Instances Details in Parallel"
+                                        },
+                                        "Get All Instances Details in Parallel": {
+                                          "Type": "Map",
+                                          "ItemProcessor": {
+                                            "ProcessorConfig": {
+                                              "Mode": "DISTRIBUTED",
+                                              "ExecutionType": "STANDARD"
+                                            },
+                                            "StartAt": "Get Instance Details",
+                                            "States": {
+                                              "Get Instance Details": {
+                                                "Type": "Task",
+                                                "Resource": "arn:aws:states:::lambda:invoke",
+                                                "OutputPath": "$.Payload",
+                                                "Parameters": {
+                                                  "Payload.$": "$",
+                                                  "FunctionName": "${GetActiveInstancesDetailsLambdaARN}:$LATEST"
+                                                },
+                                                "Retry": [
+                                                  {
+                                                    "ErrorEquals": [
+                                                      "Lambda.ServiceException",
+                                                      "Lambda.AWSLambdaException",
+                                                      "Lambda.SdkClientException",
+                                                      "Lambda.TooManyRequestsException"
+                                                    ],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2
+                                                  }
+                                                ],
+                                                "End": true
+                                              }
+                                            }
+                                          },
+                                          "End": true
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "StartAt": "Get Active EKS Clusters",
+                                      "States": {
+                                        "Get Active EKS Clusters": {
+                                          "Type": "Task",
+                                          "Resource": "arn:aws:states:::lambda:invoke",
+                                          "OutputPath": "$.Payload",
+                                          "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${GetActiveEKSClustersLambdaARN}:$LATEST"
+                                          },
+                                          "Next": "Get All EKS Clusters Details in Parallel"
+                                        },
+                                        "Get All EKS Clusters Details in Parallel": {
+                                          "Type": "Map",
+                                          "ItemProcessor": {
+                                            "ProcessorConfig": {
+                                              "Mode": "DISTRIBUTED",
+                                              "ExecutionType": "STANDARD"
+                                            },
+                                            "StartAt": "Get EKS Cluster Details",
+                                            "States": {
+                                              "Get EKS Cluster Details": {
+                                                "Type": "Task",
+                                                "Resource": "arn:aws:states:::lambda:invoke",
+                                                "OutputPath": "$.Payload",
+                                                "Parameters": {
+                                                  "Payload.$": "$",
+                                                  "FunctionName": "${GetActiveEKSClustersDetailsLambdaARN}:$LATEST"
+                                                },
+                                                "Retry": [
+                                                  {
+                                                    "ErrorEquals": [
+                                                      "Lambda.ServiceException",
+                                                      "Lambda.AWSLambdaException",
+                                                      "Lambda.SdkClientException",
+                                                      "Lambda.TooManyRequestsException"
+                                                    ],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2
+                                                  }
+                                                ],
+                                                "End": true
+                                              }
+                                            }
+                                          },
+                                          "End": true
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "StartAt": "Get Active RDS Clusters",
+                                      "States": {
+                                        "Get Active RDS Clusters": {
+                                          "Type": "Task",
+                                          "Resource": "arn:aws:states:::lambda:invoke",
+                                          "OutputPath": "$.Payload",
+                                          "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${GetActiveRDSClustersLambdaARN}:$LATEST"
+                                          },
+                                          "Next": "Get All RDS Clusters Details in Parallel"
+                                        },
+                                        "Get All RDS Clusters Details in Parallel": {
+                                          "Type": "Map",
+                                          "ItemProcessor": {
+                                            "ProcessorConfig": {
+                                              "Mode": "DISTRIBUTED",
+                                              "ExecutionType": "STANDARD"
+                                            },
+                                            "StartAt": "Get RDS Cluster Details",
+                                            "States": {
+                                              "Get RDS Cluster Details": {
+                                                "Type": "Task",
+                                                "Resource": "arn:aws:states:::lambda:invoke",
+                                                "OutputPath": "$.Payload",
+                                                "Parameters": {
+                                                  "Payload.$": "$",
+                                                  "FunctionName": "${GetActiveRDSClustersDetailsLambdaARN}:$LATEST"
+                                                },
+                                                "Retry": [
+                                                  {
+                                                    "ErrorEquals": [
+                                                      "Lambda.ServiceException",
+                                                      "Lambda.AWSLambdaException",
+                                                      "Lambda.SdkClientException",
+                                                      "Lambda.TooManyRequestsException"
+                                                    ],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2
+                                                  }
+                                                ],
+                                                "End": true
+                                              }
+                                            }
+                                          },
+                                          "End": true
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "StartAt": "Get Active RDS Instances",
+                                      "States": {
+                                        "Get Active RDS Instances": {
+                                          "Type": "Task",
+                                          "Resource": "arn:aws:states:::lambda:invoke",
+                                          "OutputPath": "$.Payload",
+                                          "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${GetActiveRDSInstancesLambdaARN}:$LATEST"
+                                          },
+                                          "Next": "Get All RDS Instances Details in Parallel"
+                                        },
+                                        "Get All RDS Instances Details in Parallel": {
+                                          "Type": "Map",
+                                          "ItemProcessor": {
+                                            "ProcessorConfig": {
+                                              "Mode": "DISTRIBUTED",
+                                              "ExecutionType": "STANDARD"
+                                            },
+                                            "StartAt": "Get RDS Instances Details",
+                                            "States": {
+                                              "Get RDS Instances Details": {
+                                                "Type": "Task",
+                                                "Resource": "arn:aws:states:::lambda:invoke",
+                                                "OutputPath": "$.Payload",
+                                                "Parameters": {
+                                                  "Payload.$": "$",
+                                                  "FunctionName": "${GetActiveRDSInstancesDetailsLambdaARN}:$LATEST"
+                                                },
+                                                "Retry": [
+                                                  {
+                                                    "ErrorEquals": [
+                                                      "Lambda.ServiceException",
+                                                      "Lambda.AWSLambdaException",
+                                                      "Lambda.SdkClientException",
+                                                      "Lambda.TooManyRequestsException"
+                                                    ],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2
+                                                  }
+                                                ],
+                                                "End": true
+                                              }
+                                            }
+                                          },
+                                          "End": true
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "StartAt": "Get Active EFS",
+                                      "States": {
+                                        "Get Active EFS": {
+                                          "Type": "Task",
+                                          "Resource": "arn:aws:states:::lambda:invoke",
+                                          "OutputPath": "$.Payload",
+                                          "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${GetActiveEFSFileSystemsLambdaARN}:$LATEST"
+                                          },
+                                          "Next": "Get All EFS Details in Parallel"
+                                        },
+                                        "Get All EFS Details in Parallel": {
+                                          "Type": "Map",
+                                          "ItemProcessor": {
+                                            "ProcessorConfig": {
+                                              "Mode": "DISTRIBUTED",
+                                              "ExecutionType": "STANDARD"
+                                            },
+                                            "StartAt": "Get Active EFS Details",
+                                            "States": {
+                                              "Get Active EFS Details": {
+                                                "Type": "Task",
+                                                "Resource": "arn:aws:states:::lambda:invoke",
+                                                "OutputPath": "$.Payload",
+                                                "Parameters": {
+                                                  "Payload.$": "$",
+                                                  "FunctionName": "${GetActiveEFSFileSystemsDetailsLambdaARN}:$LATEST"
+                                                },
+                                                "Retry": [
+                                                  {
+                                                    "ErrorEquals": [
+                                                      "Lambda.ServiceException",
+                                                      "Lambda.AWSLambdaException",
+                                                      "Lambda.SdkClientException",
+                                                      "Lambda.TooManyRequestsException"
+                                                    ],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2
+                                                  }
+                                                ],
+                                                "End": true
+                                              }
+                                            }
+                                          },
+                                          "End": true
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - DeployIAMKeyPairAccessTrackerProject
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Active IAM KeyPairs",
+                        "States": {
+                          "Get Active IAM KeyPairs": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetAllIAMUsersActiveKeyPairsLambdaARN}:$LATEST"
+                            },
+                            "InputPath": "$.[0]",
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+            - !Sub |-
+                ], "Next": "Process Events" },
+                  "Process Events": {
+                    "Type": "Map",
+                    "ItemProcessor": {
+                      "ProcessorConfig": {
+                        "Mode": "DISTRIBUTED",
+                        "ExecutionType": "STANDARD"
+                      },
+                      "StartAt": "Capture Existing Resources",
+                      "States": {
+                        "Capture Existing Resources": {
+                          "Type": "Map",
+                          "ItemProcessor": {
+                            "ProcessorConfig": {
+                              "Mode": "DISTRIBUTED",
+                              "ExecutionType": "STANDARD"
+                            },
+                            "StartAt": "Send Event",
+                            "States": {
+                              "Send Event": {
+                                "Type": "Task",
+                                "Resource": "arn:aws:states:::lambda:invoke",
+                                "OutputPath": "$.Payload",
+                                "Parameters": {
+                                  "Payload.$": "$",
+                                  "FunctionName": "${SendActiveResourcesEventsLambdaARN}:$LATEST"
+                                },
+                                "End": true
+                              }
+                            }
+                          },
+                          "End": true
+                        } } },
+                        "End": true
+                      } } },
+                      "InputPath": "$.Accounts",
+                      "End": true
+                    }
+                  }
+                }
+
+  AutoTaggerSfnRole:
+    Condition: CreateAutoTaggerResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-auto-tag-existing-resources
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudWatchLogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CreateLogs
+            Effect: Allow
+            Action:
+            - logs:CreateLogDelivery
+            - logs:GetLogDelivery
+            - logs:UpdateLogDelivery
+            - logs:ListLogDeliveries
+            - logs:PutResourcePolicy
+            - logs:DescribeResourcePolicies
+            - logs:DescribeLogGroups
+            Resource: "*"
+      - PolicyName: StepFunctionsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SfnStartExecution
+            Effect: Allow
+            Action: states:StartExecution
+            Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ProjectName}-auto-tagger"
+          - Sid: SfnAccess
+            Effect: Allow
+            Action:
+            - states:DescribeExecution
+            - states:StopExecution
+            Resource: "*"
+      - PolicyName: AllowFunctionsInvocations
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: InvokeLambda
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - !Sub "${StackSetCreationWaiterLambdaARN}:*"
+            - !Ref StackSetCreationWaiterLambdaARN
+            - !Sub "${GetDeploymentTargetAccountsLambdaARN}:*"
+            - !Ref GetDeploymentTargetAccountsLambdaARN
+            - !If [ AutoTagEC2Instances, !Sub "${GetActiveInstancesLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEC2Instances, !Ref GetActiveInstancesLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEC2Instances, !Sub "${TagEC2InstancesLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEC2Instances, !Ref TagEC2InstancesLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEKSClusters, !Sub "${GetActiveEKSClustersLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEKSClusters, !Ref GetActiveEKSClustersLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEKSClusters, !Sub "${TagEKSClustersLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEKSClusters, !Ref TagEKSClustersLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Sub "${GetActiveRDSClustersLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Ref GetActiveRDSClustersLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Sub "${GetActiveRDSInstancesLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Ref GetActiveRDSInstancesLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Sub "${TagRDSClustersInstancesLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagRDSClustersInstances, !Ref TagRDSClustersInstancesLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEFS, !Sub "${GetActiveEFSFileSystemsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEFS, !Ref GetActiveEFSFileSystemsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEFS, !Sub "${TagEFSLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEFS, !Ref TagEFSLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagVPCs, !Sub "${GetVPCsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagVPCs, !Ref GetVPCsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagSubnets, !Sub "${GetSubnetsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagSubnets, !Ref GetSubnetsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEbsVolumes, !Sub "${GetEBSVolumesLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEbsVolumes, !Ref GetEBSVolumesLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEIPs, !Sub "${GetEIPsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEIPs, !Ref GetEIPsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagEbsSnapshots, !Sub "${GetEbsSnapshotsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagEbsSnapshots, !Ref GetEbsSnapshotsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagAMIs, !Sub "${GetAMIsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagAMIs, !Ref GetAMIsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ CreateEC2TaggingResources, !Sub "${TagEC2ResourceLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ CreateEC2TaggingResources, !Ref TagEC2ResourceLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagFSX, !Sub "${GetFsxFileSystemsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagFSX, !Ref GetFsxFileSystemsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagFSX, !Sub "${TagFsxLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagFSX, !Ref TagFsxLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagSecrets, !Sub "${GetSecretsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagSecrets, !Ref GetSecretsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagSecrets, !Sub "${TagSecretsLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagSecrets, !Ref TagSecretsLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagBackupPlans, !Sub "${GetBackupPlansLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagBackupPlans, !Ref GetBackupPlansLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagBackupPlans, !Sub "${TagBackupPlansLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagBackupPlans, !Ref TagBackupPlansLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagLoadbalancers, !Sub "${GetLoadBalancersLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagLoadbalancers, !Ref GetLoadBalancersLambdaARN, !Ref AWS::NoValue ]
+            - !If [ AutoTagLoadbalancers, !Sub "${TagLoadbalancersLambdaARN}:*", !Ref AWS::NoValue ]
+            - !If [ AutoTagLoadbalancers, !Ref TagLoadbalancersLambdaARN, !Ref AWS::NoValue ]
+
+  AutoTaggerSfnLogGroup:
+    Condition: CreateAutoTaggerResources
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/stepfunction/${ProjectName}-auto-tag-existing-resources"
+      RetentionInDays: 14
+
+  AutoTaggerSfn:
+    Condition: CreateAutoTaggerResources
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${ProjectName}-auto-tagger
+      RoleArn: !GetAtt AutoTaggerSfnRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt AutoTaggerSfnLogGroup.Arn
+      DefinitionString:
+        Fn::Join:
+          - ''
+          - - !Sub |-
+              {
+                "Comment": "Auto Tagger",
+                "StartAt": "Get Deployment Targets Details",
+                "States": {
+                  "Get Deployment Targets Details": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "OutputPath": "$.Payload",
+                    "Parameters": {
+                      "Payload.$": "$",
+                      "FunctionName": "${GetDeploymentTargetAccountsLambdaARN}:$LATEST"
+                    },
+                    "Next": "Check each account"
+                  },
+                  "Check each account": {
+                    "Type": "Map",
+                    "ItemProcessor": {
+                      "ProcessorConfig": {
+                        "Mode": "INLINE"
+                      },
+                      "StartAt": "TransformInput",
+                      "States": {
+                        "TransformInput": {
+                          "Type": "Map",
+                          "ItemsPath": "$.Regions",
+                          "Parameters": {
+                            "AccountId.$": "$.AccountId",
+                            "Region.$": "$$.Map.Item.Value"
+                          },
+                          "ResultPath": "$",
+                          "Iterator": {
+                            "StartAt": "CreateRegionItem",
+                            "States": {
+                              "CreateRegionItem": {
+                                "Type": "Pass",
+                                "End": true
+                              }
+                            }
+                          },
+                          "Next": "Check each region"
+                        },
+                        "Check each region": {
+                          "Type": "Map",
+                          "ItemProcessor": {
+                            "ProcessorConfig": {
+                              "Mode": "INLINE"
+                            },
+                            "StartAt": "Process all resources in parallel",
+                            "States": {
+                              "Process all resources in parallel": {
+                                "Type": "Parallel",
+                                "Branches": [
+            - Fn::Join:
+                - ','
+                - - Fn::If:
+                    - AutoTagVPCs
+                    - !Sub |-
+                      {
+                        "StartAt": "Get VPCs",
+                        "States": {
+                          "Get VPCs": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetVPCsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All VPCs"
+                          },
+                          "Tag All VPCs": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag VPC",
+                              "States": {
+                                "Tag VPC": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagSubnets
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Subnets",
+                        "States": {
+                          "Get Subnets": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetSubnetsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All Subnets"
+                          },
+                          "Tag All Subnets": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Subnet",
+                              "States": {
+                                "Tag Subnet": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEbsVolumes
+                    - !Sub |-
+                      {
+                        "StartAt": "Get EBS Volumes",
+                        "States": {
+                          "Get EBS Volumes": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetEBSVolumesLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EBS Volumes"
+                          },
+                          "Tag All EBS Volumes": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Volume",
+                              "States": {
+                                "Tag Volume": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEIPs
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Elastic IPs",
+                        "States": {
+                          "Get Elastic IPs": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetEIPsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EIP Allocations"
+                          },
+                          "Tag All EIP Allocations": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Allocation",
+                              "States": {
+                                "Tag Allocation": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEbsSnapshots
+                    - !Sub |-
+                      {
+                        "StartAt": "Get EBS Snapshots",
+                        "States": {
+                          "Get EBS Snapshots": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetEbsSnapshotsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EBS Snapshots"
+                          },
+                          "Tag All EBS Snapshots": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Snapshot",
+                              "States": {
+                                "Tag Snapshot": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagAMIs
+                    - !Sub |-
+                      {
+                        "StartAt": "Get AMIs",
+                        "States": {
+                          "Get AMIs": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetAMIsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All AMIs"
+                          },
+                          "Tag All AMIs": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag AMI",
+                              "States": {
+                                "Tag AMI": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2ResourceLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEC2Instances
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Active EC2 Instances",
+                        "States": {
+                          "Get Active EC2 Instances": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetActiveInstancesLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EC2 Instances"
+                          },
+                          "Tag All EC2 Instances": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag EC2 Instance",
+                              "States": {
+                                "Tag EC2 Instance": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEC2InstancesLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEKSClusters
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Active EKS Clusters",
+                        "States": {
+                          "Get Active EKS Clusters": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetActiveEKSClustersLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EKS Clusters"
+                          },
+                          "Tag All EKS Clusters": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag EKS Cluster",
+                              "States": {
+                                "Tag EKS Cluster": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEKSClustersLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagRDSClustersInstances
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Active RDS Clusters",
+                        "States": {
+                          "Get Active RDS Clusters": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetActiveRDSClustersLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All RDS Clusters"
+                          },
+                          "Tag All RDS Clusters": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag RDS Cluster",
+                              "States": {
+                                "Tag RDS Cluster": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagRDSClustersInstancesLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      },
+                      {
+                        "StartAt": "Get Active RDS Instances",
+                        "States": {
+                          "Get Active RDS Instances": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetActiveRDSInstancesLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All RDS Instances"
+                          },
+                          "Tag All RDS Instances": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag RDS Instances",
+                              "States": {
+                                "Tag RDS Instances": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagRDSClustersInstancesLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagEFS
+                    - !Sub |-
+                      {
+                        "StartAt": "Get EFS FileSystems",
+                        "States": {
+                          "Get EFS FileSystems": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetActiveEFSFileSystemsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All EFS FileSystems"
+                          },
+                          "Tag All EFS FileSystems": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag EFS",
+                              "States": {
+                                "Tag EFS": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagEFSLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagFSX
+                    - !Sub |-
+                      {
+                        "StartAt": "Get FSX FileSystems",
+                        "States": {
+                          "Get FSX FileSystems": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetFsxFileSystemsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All FSX FileSystems"
+                          },
+                          "Tag All FSX FileSystems": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag FileSystem",
+                              "States": {
+                                "Tag FileSystem": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagFsxLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagSecrets
+                    - !Sub |-
+                      {
+                        "StartAt": "Get SecretsManager Secrets",
+                        "States": {
+                          "Get SecretsManager Secrets": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetSecretsLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All SecretsManager Secrets"
+                          },
+                          "Tag All SecretsManager Secrets": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Secret",
+                              "States": {
+                                "Tag Secret": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagSecretsLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagBackupPlans
+                    - !Sub |-
+                      {
+                        "StartAt": "Get Backup Plans",
+                        "States": {
+                          "Get Backup Plans": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetBackupPlansLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All Backup Plans"
+                          },
+                          "Tag All Backup Plans": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag Plan",
+                              "States": {
+                                "Tag Plan": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagBackupPlansLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+                  - Fn::If:
+                    - AutoTagLoadbalancers
+                    - !Sub |-
+                      {
+                        "StartAt": "Get LoadBalancers",
+                        "States": {
+                          "Get LoadBalancers": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${GetLoadBalancersLambdaARN}:$LATEST"
+                            },
+                            "Next": "Tag All LoadBalancers"
+                          },
+                          "Tag All LoadBalancers": {
+                            "Type": "Map",
+                            "ItemProcessor": {
+                              "ProcessorConfig": {
+                                "Mode": "DISTRIBUTED",
+                                "ExecutionType": "STANDARD"
+                              },
+                              "StartAt": "Tag LoadBalancer",
+                              "States": {
+                                "Tag LoadBalancer": {
+                                  "Type": "Task",
+                                  "Resource": "arn:aws:states:::lambda:invoke",
+                                  "OutputPath": "$.Payload",
+                                  "Parameters": {
+                                    "Payload.$": "$",
+                                    "FunctionName": "${TagLoadbalancersLambdaARN}:$LATEST"
+                                  },
+                                  "Retry": [{
+                                    "ErrorEquals": [
+                                      "Lambda.ServiceException",
+                                      "Lambda.AWSLambdaException",
+                                      "Lambda.SdkClientException",
+                                      "Lambda.TooManyRequestsException"
+                                    ],
+                                    "IntervalSeconds": 2,
+                                    "MaxAttempts": 3,
+                                    "BackoffRate": 2
+                                  }],
+                                  "End": true
+                                }
+                              }
+                            },
+                            "End": true
+                          }
+                        }
+                      }
+                    - !Ref AWS::NoValue
+            - '], "End": true }}}, "End": true }}},"End": true, "InputPath": "$.Accounts" }}}'
+
+Outputs:
+  SSOUserReportGeneratorSfnARN:
+    Condition: DeployUserOffboardingWorkflowProject
+    Description: ARN of SSO User Resource Report Generator Step Function
+    Value: !Ref SSOUserReportGeneratorSfn
+  FetchAndStoreSSOUsersAWSIpDataSfnARN:
+    Condition: DeployIPTrackerProject
+    Description: ARN of FetchAndStoreSSOUsersAWSIpData Step Function
+    Value: !Ref FetchAndStoreSSOUsersAWSIpDataSfn
+  SSMInstanceAutomationSfnARN:
+    Condition: DeploySSMAutomationProject
+    Description: ARN of SSM Instance Automation Step Function
+    Value: !Ref SSMInstanceAutomationSfn
+  CaptureExistingResourcesSfnARN:
+    Condition: CreateCaptureExistingResources
+    Description: ARN of Capture Existing Active Resources Step Function
+    Value: !Ref CaptureExistingResourcesSfn
+  AutoTaggerSfnARN:
+    Condition: CreateAutoTaggerResources
+    Description: ARN of Auto-Tagger Step Function
+    Value: !Ref AutoTaggerSfn

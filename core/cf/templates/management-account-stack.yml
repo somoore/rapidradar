@@ -1,0 +1,1487 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Creates Trail for Data API for S3, IAM Role to be assumed by Automation Account,
+  SCP for Restricting EC2 Deployment only with IMDSV2, without Public IP, with encrypted Root EBS Volume,
+  creation of EIP, LoadBalancer and EBS Volumes without certain tags and Admin IAM Role for CloudFormation StackSets Execution.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+          - OrganizationId
+          - IsControlTowerEnabled
+          - AutomationAccountId
+          - AutomationEventBusName
+          - CfStackSetExecutionRoleCreation
+          - CfStackSetExecutionRoleName
+          - SSORolePermissionAccounts
+      - Label:
+          default: Service Control Policies Configuration
+        Parameters:
+          - BlockEC2LaunchWithoutCertainTags
+          - EC2InstanceLaunchSCPTagKeys
+          - BlockEksClusterCreationWithoutCertainTags
+          - EksClusterCreationSCPTagKeys
+          - BlockRdsClusterInstanceCreationWithoutCertainTags
+          - RdsClusterInstanceCreationSCPTagKeys
+          - BlockEfsFileSystemCreationWithoutCertainTags
+          - EfsFileSystemCreationSCPTagKeys
+          - BlockEC2LaunchWithoutIMDSV2
+          - SCPBypassTagKeyEC2LaunchWithoutIMDSV2
+          - BlockEC2LaunchWithPublicIP
+          - SCPBypassTagKeyEC2LaunchWithPublicIP
+          - BlockUnencryptedEBSVolumeCreation
+          - SCPBypassTagKeyEBSVolumeCreation
+          - BlockLoadBalancerCreation
+          - SCPBypassTagKeyLoadBalancerCreation
+          - BlockEIPAllocation
+          - SCPBypassTagKeyEIPAllocation
+          - BlockMakeEBSSnapshotPublic
+          - BlockUnencryptedRDSCreation
+          - SCPBypassTagKeyUnencryptedRDSCreation
+          - BlockIAMUsersCreation
+          - SCPBypassTagKeyIAMUsersCreation
+          - BlockIAMUserCreationWithoutCertainTags
+          - IAMUsersCreationSCPTagKeys
+          - DeploymentTargets
+          - ExcludeAccounts
+      - Label:
+          default: CloudTrail Trail Configuration
+        Parameters:
+          - CreateManagementTrail
+          - CreateDataTrail
+          - IsOrganizationTrail
+          - CentralizedLogsS3BucketName
+          - TrailCloudWatchLogGroupName
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      OrganizationId:
+        default: Organization ID
+      IsControlTowerEnabled:
+        default: Is Control Tower enabled in your Organization?
+      AutomationAccountId:
+        default: Automation Account ID
+      AutomationEventBusName:
+        default: Name of Event Bus in Automation Account
+      CfStackSetExecutionRoleCreation:
+        default: Create CloudFormation StackSet Execution Role?
+      CfStackSetExecutionRoleName:
+        default: Name of CloudFormation StackSet Execution Role
+      SSORolePermissionAccounts:
+        default: Accounts you want to give access to assume Management Account IAM Role
+      BlockEC2LaunchWithoutCertainTags:
+        default: Create SCP to Block EC2 Instance Launch without certain Tag Keys?
+      EC2InstanceLaunchSCPTagKeys:
+        default: Tag Keys for EC2 Instance without which the launch should be blocked?
+      BlockEksClusterCreationWithoutCertainTags:
+        default: Create SCP to Block EKS Clusters creation without certain Tag Keys?
+      EksClusterCreationSCPTagKeys:
+        default: Tag Keys for EKS Clusters without which the creation should be blocked?
+      BlockRdsClusterInstanceCreationWithoutCertainTags:
+        default: Create SCP to Block RDS Clusters and Instances creation without certain Tag Keys?
+      RdsClusterInstanceCreationSCPTagKeys:
+        default: Tag Keys for RDS Clusters and Instances without which the creation should be blocked?
+      BlockEfsFileSystemCreationWithoutCertainTags:
+        default: Create SCP to Block EFS FileSystem creation without certain Tag Keys?
+      EfsFileSystemCreationSCPTagKeys:
+        default: Tag Keys for EFS FileSystems without which the creation should be blocked?
+      BlockEC2LaunchWithoutIMDSV2:
+        default: Create SCP to Block EC2 Instance Launch if IMDSv2 is not enabled
+      SCPBypassTagKeyEC2LaunchWithoutIMDSV2:
+        default: Tag Key to bypass SCP for blocking EC2 Launch if IMDSv2 is disabled
+      BlockEC2LaunchWithPublicIP:
+        default: Create SCP to Block EC2 Instance Launch if Public IP is associated
+      SCPBypassTagKeyEC2LaunchWithPublicIP:
+        default: Tag Key to bypass SCP for blocking EC2 Launch if Public IP is associated
+      BlockUnencryptedEBSVolumeCreation:
+        default: Create SCP to Block EBS Volume Creation without Encryption enabled?
+      SCPBypassTagKeyEBSVolumeCreation:
+        default: Tag Key to bypass SCP for blocking unencrypted EBS Volume Creation
+      BlockLoadBalancerCreation:
+        default: Create SCP to Block LoadBalancers Creation without bypass tags?
+      SCPBypassTagKeyLoadBalancerCreation:
+        default: Tag Key to bypass SCP for blocking LoadBalancers Creation
+      BlockEIPAllocation:
+        default: Create SCP to Block Elastic IPs Allocation without bypass tags?
+      SCPBypassTagKeyEIPAllocation:
+        default: Tag Key to bypass SCP for blocking Elastic IPs Allocation
+      BlockMakeEBSSnapshotPublic:
+        default: Create SCP to Block Making EBS Snapshot Public?
+      BlockUnencryptedRDSCreation:
+        default: Create SCP to Block RDS Instance/Cluster Creation if storage is not encrypted?
+      SCPBypassTagKeyUnencryptedRDSCreation:
+        default: Tag Key to bypass SCP for blocking RDS Instance/Cluster Creation if storage is not encrypted
+      BlockIAMUsersCreation:
+        default: Create SCP to Block Creation of IAM Users without bypass tag?
+      SCPBypassTagKeyIAMUsersCreation:
+        default: Tag Key to bypass SCP for blocking creation of IAM Users without bypass tag
+      BlockIAMUserCreationWithoutCertainTags:
+        default: SCP to Block IAM Users creation without certain Tag Keys
+      IAMUsersCreationSCPTagKeys:
+        default: Tag Keys for IAM Users without which the creation should be blocked by SCP?
+      DeploymentTargets:
+        default: Account IDs or Organization Unit IDs you want to attach SCPs to
+      ExcludeAccounts:
+        default: Accounts you want to exclude from the SCP Attachment
+      CreateManagementTrail:
+        default: Create Management CloudTrail Trail?
+      CreateDataTrail:
+        default: Create Data CloudTrail Trail?
+      IsOrganizationTrail:
+        default: Specify whether the trails apply to all accounts in an organization in AWS Organizations, or only for the current AWS account
+      CentralizedLogsS3BucketName:
+        default: Name of S3 Bucket to store the Cloudtrail logs (Skip if Data Trail is not being created organization-wide)
+      TrailCloudWatchLogGroupName:
+        default: Name of CloudWatch LogsGroup for CloudTrail (Skip if Data Trail is not being created organization-wide)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  OrganizationId:
+    Type: String
+    Description: ID of this Organization
+  IsControlTowerEnabled:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if control tower is enabled in your organization
+  AutomationAccountId:
+    Type: String
+    Description: Account Id
+    MaxLength: 12
+    MinLength: 12
+  AutomationEventBusName:
+    Description: Name of the Event Bus in the Automation account to which events are sent (see Automation Stack outputs)
+    Type: String
+    Default: <ProjectName>-eventbus
+  CfStackSetExecutionRoleCreation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to False if already exists
+  CfStackSetExecutionRoleName:
+    Type: String
+    Description: Name of new CloudFormation StackSet Execution Role
+  SSORolePermissionAccounts:
+    Type: String
+    Description: Comma-separated List
+  BlockEC2LaunchWithoutCertainTags:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EC2 Instance launch if certain tag keys are missing
+  EC2InstanceLaunchSCPTagKeys:
+    Type: CommaDelimitedList
+    Description: Comma separated list of Tag Keys
+  BlockEksClusterCreationWithoutCertainTags:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EKS Clusters creation if certain tag keys are missing
+  EksClusterCreationSCPTagKeys:
+    Type: CommaDelimitedList
+    Description: Comma separated list of Tag Keys
+  BlockRdsClusterInstanceCreationWithoutCertainTags:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block RDS Clusters and Instances creation if certain tag keys are missing
+  RdsClusterInstanceCreationSCPTagKeys:
+    Type: CommaDelimitedList
+    Description: Comma separated list of Tag Keys
+  BlockEfsFileSystemCreationWithoutCertainTags:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EFS FileSystems creation if certain tag keys are missing
+  EfsFileSystemCreationSCPTagKeys:
+    Type: CommaDelimitedList
+    Description: Comma separated list of Tag Keys
+  BlockEC2LaunchWithoutIMDSV2:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EC2 Instance launch if IMDSv2 is disabled
+  SCPBypassTagKeyEC2LaunchWithoutIMDSV2:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockEC2LaunchWithPublicIP:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EC2 Instance launch if Public IP is associated
+  SCPBypassTagKeyEC2LaunchWithPublicIP:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockUnencryptedEBSVolumeCreation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block EBS Volume creation if encryption is disabled (includes Root EBS Volume)
+  SCPBypassTagKeyEBSVolumeCreation:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockLoadBalancerCreation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block LoadBalancers creation if a certain bypass tag is missing
+  SCPBypassTagKeyLoadBalancerCreation:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockEIPAllocation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block Elastic IPs allocation if a certain bypass tag is missing
+  SCPBypassTagKeyEIPAllocation:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockMakeEBSSnapshotPublic:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block making EBS Snapshot public
+  BlockUnencryptedRDSCreation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block creation of RDS Instances and Clusters if storage encryption is not enabled
+  SCPBypassTagKeyUnencryptedRDSCreation:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockIAMUsersCreation:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create SCP to block creation of IAM Users without bypass tag
+  SCPBypassTagKeyIAMUsersCreation:
+    Type: String
+    Description: If this Tag Key is present, it will bypass the applied SCP
+  BlockIAMUserCreationWithoutCertainTags:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if want to create SCP to block IAM Users creation if certain tag keys are missing
+  IAMUsersCreationSCPTagKeys:
+    Type: CommaDelimitedList
+    Description: Comma separated list of Tag Keys
+  DeploymentTargets:
+    Type: String
+    Description: Comma-Delimited List (Leave Blank if no SCP is being created)
+  ExcludeAccounts:
+    Type: String
+    Description: Comma-Delimited List (Leave Blank if no SCP is being created)
+  CreateManagementTrail:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create management CloudTrail Trail
+  CreateDataTrail:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to create data CloudTrail Trail
+  IsOrganizationTrail:
+    Type: String
+    Description: Set to True if you want to apply trails to all accounts in your organization
+    AllowedValues:
+    - true
+    - false
+  CentralizedLogsS3BucketName:
+    Type: String
+    Description: ControlTower bucket name follows this naming convention `aws-controltower-logs-<LogArchiveAccountID>-<region>`. If ControlTower is not enabled, provide S3 Bucket name in current region.
+  TrailCloudWatchLogGroupName:
+    Type: String
+    Description: ControlTower used CloudWatch LogGroup named aws-controltower/CloudTrailLogs for CloudTrail logs. If ControlTower is not enabled, provide LogGroup name in current region.
+
+Conditions:
+  CreateStackSetExecutionRole: !Equals
+  - !Ref CfStackSetExecutionRoleCreation
+  - true
+  ControlTowerEnabled: !Equals
+  - !Ref IsControlTowerEnabled
+  - true
+
+  OrganizationTrail: !Equals
+  - !Ref IsOrganizationTrail
+  - true
+
+  ManagementTrailCreation: !And
+  - !Equals [ !Ref CreateManagementTrail, true ]
+  - !Condition OrganizationTrail
+  DataTrailCreation: !And
+  - !Equals [ !Ref CreateDataTrail, true ]
+  - !Condition OrganizationTrail
+
+  CreateTrailResources: !Or
+  - !Condition ManagementTrailCreation
+  - !Condition DataTrailCreation
+
+  CreateBlockEC2LaunchWithoutCertainTagsSCP: !Equals
+  - !Ref BlockEC2LaunchWithoutCertainTags
+  - true
+  CreateBlockEksClusterCreationWithoutCertainTagsSCP: !Equals
+  - !Ref BlockEksClusterCreationWithoutCertainTags
+  - true
+  CreateBlockRdsClusterInstanceCreationWithoutCertainTagsSCP: !Equals
+  - !Ref BlockRdsClusterInstanceCreationWithoutCertainTags
+  - true
+  CreateBlockEfsFileSystemCreationWithoutCertainTagsSCP: !Equals
+  - !Ref BlockEfsFileSystemCreationWithoutCertainTags
+  - true
+  CreateBlockIAMUserCreationWithoutCertainTagsSCP: !Equals
+  - !Ref BlockIAMUserCreationWithoutCertainTags
+  - true
+
+  CreateBlockEC2LaunchWithoutIMDSV2SCP: !Equals
+  - !Ref BlockEC2LaunchWithoutIMDSV2
+  - true
+  CreateBlockEC2LaunchWithPublicIPSCP: !Equals
+  - !Ref BlockEC2LaunchWithPublicIP
+  - true
+  CreateBlockEC2LaunchWithoutIMDSV2PrivateIPSCP: !Or
+  - !Condition CreateBlockEC2LaunchWithoutIMDSV2SCP
+  - !Condition CreateBlockEC2LaunchWithPublicIPSCP
+
+  CreateBlockLoadBalancerCreationSCP: !Equals
+  - !Ref BlockLoadBalancerCreation
+  - true
+  CreateBlockEIPAllocationSCP: !Equals
+  - !Ref BlockEIPAllocation
+  - true
+  CreateBlockLoadBalancerEIPCreationSCP: !Or
+  - !Condition CreateBlockLoadBalancerCreationSCP
+  - !Condition CreateBlockEIPAllocationSCP
+
+  CreateBlockUnencryptedEBSVolumeCreationSCP: !Equals
+  - !Ref BlockUnencryptedEBSVolumeCreation
+  - true
+  CreateBlockMakeEBSSnapshotPublicSCP: !Equals
+  - !Ref BlockMakeEBSSnapshotPublic
+  - true
+  CreateBlockUnencryptedRDSCreationSCP: !Equals
+  - !Ref BlockUnencryptedRDSCreation
+  - true
+  CreateBlockIAMUsersCreationSCP: !Equals
+  - !Ref BlockIAMUsersCreation
+  - true
+
+  CreateBlockResourcesSCP0: !Or
+  - !Condition CreateBlockEC2LaunchWithoutCertainTagsSCP
+  - !Condition CreateBlockEksClusterCreationWithoutCertainTagsSCP
+  - !Condition CreateBlockRdsClusterInstanceCreationWithoutCertainTagsSCP
+  - !Condition CreateBlockEfsFileSystemCreationWithoutCertainTagsSCP
+  - !Condition CreateBlockEC2LaunchWithoutIMDSV2PrivateIPSCP
+  - !Condition CreateBlockLoadBalancerEIPCreationSCP
+  - !Condition CreateBlockUnencryptedEBSVolumeCreationSCP
+  - !Condition CreateBlockMakeEBSSnapshotPublicSCP
+  - !Condition CreateBlockUnencryptedRDSCreationSCP
+  CreateBlockResourcesSCP1: !Or
+  - !Condition CreateBlockIAMUsersCreationSCP
+  - !Condition CreateBlockIAMUserCreationWithoutCertainTagsSCP
+  CreateBlockResourcesSCP: !Or
+  - !Condition CreateBlockResourcesSCP0
+  - !Condition CreateBlockResourcesSCP1
+
+Resources:
+  OrgPolicyCreatorLambda:
+    Condition: CreateBlockResourcesSCP
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      FunctionName: !Sub "${ProjectName}-org-policy-creator"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt OrgPolicyLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import json
+          from time import sleep
+          import ast
+          import re
+          import requests
+          ORG_THROTTLE_PERIOD = 0.2
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              base_kwargs = {}
+              policy_count = 0
+              policies_json = []
+              policy_ids = []
+              deployment_targets = "${DeploymentTargets}".replace(" ","").split(",")
+              exclude_accounts = str("${ExcludeAccounts}")
+              exclude_accounts = exclude_accounts.replace(" ","").split(",") if exclude_accounts else []
+              for key, value in props['KwArgs'].items():
+                  try:
+                      base_kwargs[key] = ast.literal_eval(value)
+                  except Exception as e:
+                      print(str(e))
+                      base_kwargs[key] = value
+              policy_size_limit = 5120
+              policies_json.append({'Version': base_kwargs['Content']['Version']})
+              policies_json[policy_count]['Statement'] = []
+              for index, stmt in enumerate(base_kwargs['Content']['Statement']):
+                  if 'Condition' in stmt and 'Custom:TrueIfAllTagsPresent' in stmt['Condition']:
+                      context_key = list(stmt['Condition']['Custom:TrueIfAllTagsPresent'].keys())[0]
+                      for condition_val in stmt['Condition']['Custom:TrueIfAllTagsPresent'][context_key]:
+                          policy_json = {
+                              "Sid": remove_special_characters(f"{stmt['Sid']}{condition_val}"),
+                              "Effect": stmt['Effect'],
+                              "Action": stmt['Action'],
+                              "Resource": stmt['Resource'],
+                              "Condition": {
+                                  "ForAllValues:StringNotEquals": {f"{context_key}": condition_val}
+                              }
+                          }
+                          policies_json[policy_count]['Statement'].append(policy_json)
+                          print(f"SIZE OF POLICY IS NOW {len(json.dumps(policies_json[policy_count]).encode('utf-8'))}")
+                          if len(json.dumps(policies_json[policy_count]).encode('utf-8')) > policy_size_limit:
+                              print("Creating new one..")
+                              policies_json[policy_count]['Statement'].pop()
+                              policy_count = policy_count + 1
+                              policies_json.append({'Version': base_kwargs['Content']['Version']})
+                              policies_json[policy_count]['Statement'] = []
+                              policies_json[policy_count]['Statement'].append(policy_json)
+                  else:
+                      policies_json[policy_count]['Statement'].append(stmt)
+                      print(f"SIZE OF POLICY IS NOW {len(json.dumps(policies_json[policy_count]).encode('utf-8'))}")
+                      if len(json.dumps(policies_json[policy_count]).encode('utf-8')) > policy_size_limit:
+                          policies_json[policy_count]['Statement'].pop()
+                          policy_count = policy_count + 1
+                          policies_json.append({'Version': base_kwargs['Content']['Version']})
+                          policies_json[policy_count]['Statement'] = []
+                          policies_json[policy_count]['Statement'].append(stmt)
+              if event_type in ['Create']:
+                  method=getattr(client, 'create_policy')
+                  try:
+                      kwargs = {}
+                      policy_name = base_kwargs['Name']
+                      kwargs['Description'] = base_kwargs['Description']
+                      kwargs['Type'] = base_kwargs['Type']
+                      for index, content in enumerate(policies_json):
+                          kwargs['Name'] = f"{policy_name}{str(index)}"
+                          kwargs['Content'] = json.dumps(content)
+                          data = method(**kwargs)
+                          policy_ids.append(data['Policy']['PolicySummary']['Id'])
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  existing_policy_ids = get_policy_ids(client, base_kwargs['Name'], base_kwargs['Type'])
+                  try:
+                      kwargs = {}
+                      policy_ids = []
+                      policy_name = base_kwargs['Name']
+                      kwargs['Description'] = base_kwargs['Description']
+                      if len(policies_json) == len(existing_policy_ids):
+                          for index, content in enumerate(policies_json):
+                              method=getattr(client, 'update_policy')
+                              kwargs['PolicyId'] = existing_policy_ids[index]
+                              kwargs['Name'] = f"{policy_name}{str(index)}"
+                              kwargs['Content'] = json.dumps(content)
+                              data = method(**kwargs)
+                              policy_ids.append(data['Policy']['PolicySummary']['Id'])
+                      elif len(policies_json) > len(existing_policy_ids):
+                          for index, content in enumerate(policies_json):
+                              kwargs = {}
+                              kwargs['Name'] = f"{policy_name}{str(index)}"
+                              kwargs['Content'] = json.dumps(content)
+                              kwargs['Description'] = base_kwargs['Description']
+                              if 0 <= index < len(existing_policy_ids):
+                                  method=getattr(client, 'update_policy')
+                                  kwargs['PolicyId'] = existing_policy_ids[index]
+                                  data = method(**kwargs)
+                              else:
+                                  method=getattr(client, 'create_policy')
+                                  kwargs['Type'] = base_kwargs['Type']
+                                  data = method(**kwargs)
+                                  method=getattr(client, 'attach_policy')
+                                  scp_targets = get_active_targets(client, deployment_targets, exclude_accounts)
+                                  for target in scp_targets:
+                                      method(PolicyId=data['Policy']['PolicySummary']['Id'], TargetId=target)
+                              policy_ids.append(data['Policy']['PolicySummary']['Id'])
+                      elif len(policies_json) < len(existing_policy_ids):
+                          for index, pol_id in enumerate(existing_policy_ids):
+                              kwargs = {}
+                              if 0 <= index < len(policies_json):
+                                  method=getattr(client, 'update_policy')
+                                  kwargs['PolicyId'] = pol_id
+                                  kwargs['Name'] = f"{policy_name}{str(index)}"
+                                  kwargs['Content'] = json.dumps(policies_json[index])
+                                  kwargs['Description'] = base_kwargs['Description']
+                                  data = method(**kwargs)
+                                  policy_ids.append(data['Policy']['PolicySummary']['Id'])
+                              else:
+                                  kwargs['PolicyId'] = pol_id
+                                  detach_all_targets(client, pol_id)
+                                  method=getattr(client, 'delete_policy')
+                                  data = method(PolicyId=pol_id)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'delete_policy')
+                  kwargs = {}
+                  try:
+                      existing_policy_ids = get_policy_ids(client, base_kwargs['Name'], base_kwargs['Type'])
+                      for policy in existing_policy_ids:
+                          detach_all_targets(client, policy)
+                          kwargs['PolicyId'] = policy
+                          data = method(**kwargs)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {'Ids': ','.join(policy_ids)}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def remove_special_characters(input_string):
+              pattern = re.compile(r'[^A-Za-z0-9]')
+              result = pattern.sub('', input_string)
+              return result
+          def get_policy_ids(client, name, policy_type):
+              base_kwargs = {'Filter': policy_type}
+              next_token, policy_ids = '', []
+              pattern = f"{name}" + r"(\d+)"
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = client.list_policies(**kwargs)
+                      for policy in response['Policies']:
+                          match = re.search(pattern, policy['Name'])
+                          if match:
+                              index = int(match.group(1))
+                              policy_ids.insert(index, policy['Id'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(error)
+              return policy_ids
+          def get_all_scp_targets(client, policy_id):
+              targets = []
+              base_kwargs, next_token = {'PolicyId': policy_id}, ''
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = client.list_targets_for_policy(**kwargs)
+                      for target in response['Targets']:
+                          targets.append(target['TargetId'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(str(error))
+              return targets
+          def detach_all_targets(client, policy_id):
+              targets = get_all_scp_targets(client, policy_id)
+              kwargs = { 'PolicyId': policy_id }
+              try:
+                  for target in targets:
+                      kwargs['TargetId'] = target
+                      client.detach_policy(**kwargs)
+                  return True
+              except Exception as error:
+                  print(str(error))
+                  return False
+          def get_parent_ou(client, child_id, deployment_targets=None):
+              parent_ou = ''
+              try:
+                  response = client.list_parents(ChildId=child_id)
+                  for parent in response['Parents']:
+                      if parent['Id'] not in deployment_targets:
+                          parent_ou = parent['Id'] + "/" + parent_ou
+                          parent_ou = get_parent_ou(client, parent['Id'], deployment_targets) + "/" + parent_ou
+                      else:
+                          parent_ou = parent['Id']
+                  parent_ou = parent_ou[:-1] if parent_ou.endswith('/') else parent_ou
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return parent_ou
+          def get_children(client, child_type, ou_id, exclude_accounts, exclude_accounts_ous):
+              children = []
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      sleep(ORG_THROTTLE_PERIOD)
+                      response = client.list_children(**kwargs)
+                      for child in response['Children']:
+                          print(child)
+                          if child['Type'] == 'ORGANIZATIONAL_UNIT':
+                              for exclude in exclude_accounts_ous:
+                                  if child['Id'] not in exclude:
+                                      children.append(child['Id'])
+                                  else:
+                                      children.extend(get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts, exclude_accounts_ous))
+                                      children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts, exclude_accounts_ous))
+                          elif child['Type'] == 'ACCOUNT':
+                              if child['Id'] not in exclude_accounts:
+                                  children.append(child['Id'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return children
+          def get_active_targets(client, deployment_targets: list, exclude_accounts: list):
+              active_targets = []
+              exclude_accounts_ous = []
+              try:
+                  for account in exclude_accounts:
+                      exclude_accounts_ous.append(get_parent_ou(client, account, deployment_targets))
+                  print(exclude_accounts_ous)
+                  for target in deployment_targets:
+                      if not exclude_accounts:
+                          active_targets.append(target)
+                      else:
+                          active_targets.extend(get_children(client, 'ORGANIZATIONAL_UNIT', target, exclude_accounts, exclude_accounts_ous))
+                          active_targets.extend(get_children(client, 'ACCOUNT', target, exclude_accounts, exclude_accounts_ous))
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_targets
+
+  OrgScpAttachmentLambda:
+    Condition: CreateBlockResourcesSCP
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.handler"
+      FunctionName: !Sub "${ProjectName}-scp-org-attachment"
+      Runtime: python3.11
+      Timeout: 300
+      Role: !GetAtt OrgPolicyLambdaRole.Arn
+      Layers:
+      - !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:${AWS::Region}:${AutomationAccountId}:secret:/${ProjectName}/SHARED_LAMBDA_LAYERS_ARN:SecretString:REQUESTS_LAYER_ARN:AWSCURRENT}}'
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          from time import sleep
+          import json
+          import ast
+          import requests
+          ORG_THROTTLE_PERIOD = 0.2
+          def handler(event, context):
+              print(event)
+              props = event['ResourceProperties']
+              client=boto3.client(props['Service'])
+              event_type = event['RequestType']
+              status = 'SUCCESS'
+              reason = ''
+              data = {}
+              deployment_targets = "${DeploymentTargets}".replace(" ","").split(",")
+              exclude_accounts = str("${ExcludeAccounts}")
+              exclude_accounts = exclude_accounts.replace(" ","").split(",") if exclude_accounts else []
+              if event_type in ['Create']:
+                  method=getattr(client, 'attach_policy')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      del kwargs['ExcludeAccounts']
+                      policies = kwargs['PolicyId'].split(',')
+                      for policy in policies:
+                          kwargs['PolicyId'] = policy
+                          scp_targets = get_active_targets(client, deployment_targets, exclude_accounts)
+                          for target in scp_targets:
+                              kwargs['TargetId'] = target
+                              data = method(**kwargs)
+                      print(data)
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Update']:
+                  old_kwargs = {}
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      del kwargs['ExcludeAccounts']
+                      if 'OldResourceProperties' in event:
+                          old_props = event['OldResourceProperties']
+                          for key, value in old_props['KwArgs'].items():
+                              old_kwargs[key] = str(value)
+                          method=getattr(client, 'detach_policy')
+                          policies = old_kwargs['PolicyId'].split(',')
+                          if 'ExcludeAccounts' in old_kwargs:
+                              del old_kwargs['ExcludeAccounts']
+                          for policy in policies:
+                              targets = get_all_scp_targets(client, policy)
+                              old_kwargs['PolicyId'] = policy
+                              for target in targets:
+                                  try:
+                                      old_kwargs['TargetId'] = target
+                                      data = method(**old_kwargs)
+                                  except client.exceptions.PolicyNotFoundException:
+                                      print("Policy not found")
+                                  except client.exceptions.PolicyNotAttachedException:
+                                      print("policy not attached to the target")
+                      method=getattr(client, 'attach_policy')
+                      policies = kwargs['PolicyId'].split(',')
+                      for policy in policies:
+                          kwargs['PolicyId'] = policy
+                          scp_targets = get_active_targets(client, deployment_targets, exclude_accounts)
+                          for target in scp_targets:
+                              try:
+                                  kwargs['TargetId'] = target
+                                  data = method(**kwargs)
+                              except client.exceptions.DuplicatePolicyAttachmentException:
+                                  print("Policy already attached")
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              elif event_type in ['Delete']:
+                  method=getattr(client, 'detach_policy')
+                  kwargs = {}
+                  for key, value in props['KwArgs'].items():
+                      try:
+                          kwargs[key] = ast.literal_eval(value)
+                      except Exception as e:
+                          print(str(e))
+                          kwargs[key] = value
+                  try:
+                      del kwargs['ExcludeAccounts']
+                      policies = kwargs['PolicyId'].split(',')
+                      for policy in policies:
+                          kwargs['PolicyId'] = policy
+                          scp_targets = get_all_scp_targets(client, policy)
+                          for target in scp_targets:
+                              kwargs['TargetId'] = target
+                              try:
+                                  data = method(**kwargs)
+                              except client.exceptions.PolicyNotAttachedException:
+                                  print("policy not attached to the target")
+                      status = 'SUCCESS'
+                      reason = ''
+                  except Exception as e:
+                      status = 'FAILED'
+                      reason = str(e)
+                      data = {}
+              response_data = {
+                  'Status': status,
+                  'Reason': reason,
+                  'PhysicalResourceId': event['LogicalResourceId'],
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': {}
+              }
+              print(response_data)
+              resp = requests.put(event['ResponseURL'], data=json.dumps(response_data))
+              if resp.status_code != 200:
+                  print(resp.text)
+                  raise Exception(resp.text)
+              return
+          def get_all_scp_targets(client, policy_id):
+              targets = []
+              base_kwargs, next_token = {'PolicyId': policy_id}, ''
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      response = client.list_targets_for_policy(**kwargs)
+                      for target in response['Targets']:
+                          targets.append(target['TargetId'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(str(error))
+              return targets
+          def get_parent_ou(client, child_id, deployment_targets=None):
+              parent_ou = ''
+              try:
+                  response = client.list_parents(ChildId=child_id)
+                  for parent in response['Parents']:
+                      if parent['Id'] not in deployment_targets:
+                          parent_ou = parent['Id'] + "/" + parent_ou
+                          parent_ou = get_parent_ou(client, parent['Id'], deployment_targets) + "/" + parent_ou
+                      else:
+                          parent_ou = parent['Id']
+                  parent_ou = parent_ou[:-1] if parent_ou.endswith('/') else parent_ou
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return parent_ou
+          def get_children(client, child_type, ou_id, exclude_accounts, exclude_accounts_ous):
+              children = []
+              base_kwargs, next_token = {'ParentId': ou_id, 'ChildType': child_type}, ''
+              try:
+                  while next_token is not None:
+                      kwargs = base_kwargs.copy()
+                      if next_token != '':
+                          kwargs.update({'NextToken': next_token})
+                      sleep(ORG_THROTTLE_PERIOD)
+                      response = client.list_children(**kwargs)
+                      for child in response['Children']:
+                          if child['Type'] == 'ORGANIZATIONAL_UNIT':
+                              item_in_excluded = False
+                              for exclude in exclude_accounts_ous:
+                                  if child['Id'] in exclude:
+                                      item_in_excluded = True
+                                      break
+                              if not item_in_excluded:
+                                  children.append(child['Id'])
+                              else:
+                                  children.extend(get_children(client, 'ACCOUNT', child['Id'], exclude_accounts, exclude_accounts_ous))
+                                  result = get_children(client, 'ORGANIZATIONAL_UNIT', child['Id'], exclude_accounts, exclude_accounts_ous)
+                                  print(f"result: {result}")
+                                  for item in result:
+                                      item_nested_in_excluded = False
+                                      for exclude in exclude_accounts_ous:
+                                          if item in exclude:
+                                              item_nested_in_excluded = True
+                                              break
+                                      if not item_nested_in_excluded:
+                                          children.append(item)
+                          elif child['Type'] == 'ACCOUNT':
+                              if child['Id'] not in exclude_accounts:
+                                  children.append(child['Id'])
+                      next_token = response['NextToken'] if 'NextToken' in response else None
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              children = list(set(children))
+              return children
+          def get_active_targets(client, deployment_targets: list, exclude_accounts: list):
+              active_targets = []
+              exclude_accounts_ous = []
+              try:
+                  for account in exclude_accounts:
+                      exclude_accounts_ous.append(get_parent_ou(client, account, deployment_targets))
+                  print(exclude_accounts_ous)
+                  for target in deployment_targets:
+                      if not exclude_accounts:
+                          active_targets.append(target)
+                      else:
+                          active_targets.extend(get_children(client, 'ORGANIZATIONAL_UNIT', target, exclude_accounts, exclude_accounts_ous))
+                          active_targets.extend(get_children(client, 'ACCOUNT', target, exclude_accounts, exclude_accounts_ous))
+              except Exception as error:
+                  print(f"[ERROR] {str(error)}")
+              return active_targets
+
+  OrgPolicyLambdaRole:
+    Condition: CreateBlockResourcesSCP
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: OrgReadWritePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - 'organizations:ListPoliciesForTarget'
+            - 'organizations:DescribeEffectivePolicy'
+            - 'organizations:ListTargetsForPolicy'
+            - 'organizations:ListChildren'
+            - 'organizations:UpdatePolicy'
+            - 'organizations:DetachPolicy'
+            - 'organizations:EnablePolicyType'
+            - 'organizations:AttachPolicy'
+            - 'organizations:DeletePolicy'
+            - 'organizations:DisablePolicyType'
+            - 'organizations:DescribePolicy'
+            - 'organizations:ListPolicies'
+            - 'organizations:ListRoots'
+            - 'organizations:ListOrganizationalUnitsForParent'
+            - 'organizations:CreatePolicy'
+            - 'organizations:DisableAWSServiceAccess'
+            - 'organizations:DescribeAccount'
+            - 'organizations:ListAWSServiceAccessForOrganization'
+            - 'organizations:ListAccountsForParent'
+            - 'organizations:ListAccounts'
+            - 'organizations:EnableAWSServiceAccess'
+            - 'organizations:ListCreateAccountStatus'
+            - 'organizations:DescribeOrganization'
+            - 'organizations:DescribeOrganizationalUnit'
+            - 'organizations:ListParents'
+            - 'organizations:DescribeCreateAccountStatus'
+            Resource: '*'
+
+  CloudTrailRole:
+    Condition: CreateTrailResources
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cloudtrail-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - cloudtrail.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudTrailRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudTrailAccess
+            Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:*:*:log-group:${TrailCloudWatchLogGroupName}:*"
+
+  Trail:
+    Condition: CreateTrailResources
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      EventSelectors:
+        - Fn::If:
+            - DataTrailCreation
+            - DataResources:
+                - Type: AWS::S3::Object
+                  Values:
+                    - "arn:aws:s3"
+              IncludeManagementEvents: false
+              ReadWriteType: WriteOnly
+            - !Ref AWS::NoValue
+        - Fn::If:
+            - ManagementTrailCreation
+            - IncludeManagementEvents: true
+              ReadWriteType: All
+            - !Ref AWS::NoValue
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IsOrganizationTrail: !Ref IsOrganizationTrail
+      S3BucketName: !Ref CentralizedLogsS3BucketName
+      S3KeyPrefix: !Ref OrganizationId
+      TrailName: !Sub "${ProjectName}-trail"
+      CloudWatchLogsLogGroupArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${TrailCloudWatchLogGroupName}:*"
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailRole.Arn
+
+  SSOCrossAccountAssumeRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub "${ProjectName}-sso-cross-account-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            AWS: !Split [',', !Join [',', [ !Ref AutomationAccountId, !Ref SSORolePermissionAccounts ]]]
+          Action:
+            - sts:AssumeRole
+          Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationId
+      Path: "/"
+      Policies:
+      - PolicyName: SSOReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SSOAccess
+            Effect: Allow
+            Action:
+            - sso:ListInstances
+            - sso:ListPermissionSets
+            - sso:DescribePermissionSet
+            - sso:ListTagsForResource
+            Resource: "*"
+      - PolicyName: IdentityStoreReadOnly
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: IdentityStoreReadOnly
+            Effect: Allow
+            Action:
+            - identitystore:DescribeUser
+            - identitystore:DescribeGroup
+            - identitystore:GetUserId
+            - identitystore:ListUsers
+            Resource: "*"
+      - PolicyName: OrgReadPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: OrgAccess
+            Effect: Allow
+            Action:
+            - organizations:DescribeAccount
+            - organizations:ListAccounts
+            - organizations:ListAccountsForParent
+            Resource: "*"
+      - PolicyName: CloudTrailPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudTrailAccess
+            Effect: Allow
+            Action:
+            - cloudtrail:LookupEvents
+            Resource: "*"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/ReadOnlyAccess
+
+  DenyServicesActionsSCP:
+    Condition: CreateBlockResourcesSCP
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: organizations
+      ServiceToken: !GetAtt OrgPolicyCreatorLambda.Arn
+      KwArgs:
+        Name: !Sub "${ProjectName}-deny-services-actions"
+        Description: >
+          This SCP denies some services' actions if certain conditions are not met.
+        Type: SERVICE_CONTROL_POLICY
+        Content:
+          Version: "2012-10-17"
+          Statement:
+          - Fn::If:
+            - CreateBlockEC2LaunchWithoutIMDSV2SCP
+            - Sid: "DenyRunInstancesWithoutIMDSV2"
+              Effect: "Deny"
+              Action:
+              - "ec2:RunInstances"
+              Resource:
+              - "arn:aws:ec2:*:*:instance/*"
+              Condition: {
+                "StringNotEquals": {"ec2:MetadataHttpTokens": "required"},
+                "ForAllValues:StringNotEquals": {"aws:TagKeys": [!Ref SCPBypassTagKeyEC2LaunchWithoutIMDSV2]}
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockEC2LaunchWithPublicIPSCP
+            - Sid: "DenyRunInstancesWithPublicIp"
+              Effect: "Deny"
+              Action:
+              - "ec2:RunInstances"
+              Resource:
+              - "arn:aws:ec2:*:*:instance/*"
+              - "arn:aws:ec2:*:*:network-interface/*"
+              Condition: {
+                "Bool": { "ec2:AssociatePublicIpAddress": "true" },
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyEC2LaunchWithPublicIP] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockEC2LaunchWithoutCertainTagsSCP
+            - Sid: "DenyRunInstancesWithoutTags"
+              Effect: "Deny"
+              Action: "ec2:RunInstances"
+              Resource: "arn:aws:ec2:*:*:instance/*"
+              Condition: {
+                "Custom:TrueIfAllTagsPresent": { # Custom Condition (multiple statements get created on the basis of aws:TagKeys array with condition operator 'ForAllValues:StringNotEquals')
+                  "aws:TagKeys": !Ref EC2InstanceLaunchSCPTagKeys
+                }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockEksClusterCreationWithoutCertainTagsSCP
+            - Sid: "DenyEksCreateClusterWithoutTags"
+              Effect: "Deny"
+              Action: "eks:CreateCluster"
+              Resource: "arn:aws:eks:*:*:cluster/*"
+              Condition: {
+                "Custom:TrueIfAllTagsPresent": { # Custom Condition (multiple statements get created on the basis of aws:TagKeys array with condition operator 'ForAllValues:StringNotEquals')
+                  "aws:TagKeys": !Ref EksClusterCreationSCPTagKeys
+                }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockRdsClusterInstanceCreationWithoutCertainTagsSCP
+            - Sid: "DenyRdsCreateDBClusterInstanceWithoutTags"
+              Effect: "Deny"
+              Action:
+              - "rds:CreateDBCluster"
+              - "rds:CreateDBInstance"
+              Resource:
+              - "arn:aws:rds:*:*:cluster:*"
+              - "arn:aws:rds:*:*:db:*"
+              Condition: {
+                "Custom:TrueIfAllTagsPresent": { # Custom Condition (multiple statements get created on the basis of aws:TagKeys array with condition operator 'ForAllValues:StringNotEquals')
+                  "aws:TagKeys": !Ref RdsClusterInstanceCreationSCPTagKeys
+                }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockEfsFileSystemCreationWithoutCertainTagsSCP
+            - Sid: "DenyEfsCreateFileSystemWithoutTags"
+              Effect: "Deny"
+              Action: "elasticfilesystem:CreateFileSystem"
+              Resource: "arn:aws:elasticfilesystem:*:*:file-system/*"
+              Condition: {
+                "Custom:TrueIfAllTagsPresent": { # Custom Condition (multiple statements get created on the basis of aws:TagKeys array with condition operator 'ForAllValues:StringNotEquals')
+                  "aws:TagKeys": !Ref EfsFileSystemCreationSCPTagKeys
+                }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockUnencryptedEBSVolumeCreationSCP
+            - Sid: "DenyRunInstancesWithUnencryptedVol"
+              Effect: "Deny"
+              Action:
+              - "ec2:RunInstances"
+              Resource:
+              - "arn:aws:ec2:*:*:instance/*"
+              - "arn:aws:ec2:*:*:volume/*"
+              Condition: {
+                "Bool": {
+                  "ec2:Encrypted": "false"
+                },
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyEBSVolumeCreation] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockUnencryptedEBSVolumeCreationSCP
+            - Sid: "DenyCreateVolumeWithoutEncryption"
+              Effect: "Deny"
+              Action: "ec2:CreateVolume"
+              Resource: "*"
+              Condition: {
+                "Bool": { "ec2:Encrypted": "false" },
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyEBSVolumeCreation] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockLoadBalancerCreationSCP
+            - Sid: "DenyCreateLoadBalancerWithoutBypassTag"
+              Effect: "Deny"
+              Action: "elasticloadbalancing:CreateLoadBalancer"
+              Resource: "arn:aws:elasticloadbalancing:*:*:loadbalancer/*"
+              Condition: {
+                "ForAllValues:StringNotEquals": {"aws:TagKeys": [!Ref SCPBypassTagKeyLoadBalancerCreation]}
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockEIPAllocationSCP
+            - Sid: "DenyAllocateEIPWithoutBypassTag"
+              Effect: "Deny"
+              Action:
+              - "ec2:AllocateAddress"
+              Resource:
+              - "arn:aws:ec2:*:*:elastic-ip/*"
+              Condition: {
+                "ForAllValues:StringNotEquals": {"aws:TagKeys": [!Ref SCPBypassTagKeyEIPAllocation]}
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockMakeEBSSnapshotPublicSCP
+            - Sid: "DenyMakeSnapshotPublic"
+              Effect: "Deny"
+              Action: "ec2:ModifySnapshotAttribute"
+              Resource: "arn:aws:ec2:*::snapshot/*"
+              Condition: {
+                "StringEquals": { "ec2:Add/group": "all" }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockUnencryptedRDSCreationSCP
+            - Sid: "DenyCreateRDSInstanceWithoutEncryption"
+              Effect: "Deny"
+              Action: "rds:CreateDBInstance"
+              Resource: "*"
+              Condition: {
+                "StringNotLike": { "rds:DatabaseEngine": "aurora*" },
+                "Bool": { "rds:StorageEncrypted": "false" },
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyUnencryptedRDSCreation] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockUnencryptedRDSCreationSCP
+            - Sid: "DenyCreateRDSClusterWithoutEncryption"
+              Effect: "Deny"
+              Action: "rds:CreateDBCluster"
+              Resource: "*"
+              Condition: {
+                "Bool": { "rds:StorageEncrypted": "false" },
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyUnencryptedRDSCreation] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockIAMUsersCreationSCP
+            - Sid: "DenyCreateIAMUser"
+              Effect: "Deny"
+              Action: "iam:CreateUser"
+              Resource: "*"
+              Condition: {
+                "ForAllValues:StringNotEquals": { "aws:TagKeys": [!Ref SCPBypassTagKeyIAMUsersCreation] }
+              }
+            - !Ref AWS::NoValue
+          - Fn::If:
+            - CreateBlockIAMUserCreationWithoutCertainTagsSCP
+            - Sid: "DenyCreateIAMUserWithoutTags"
+              Effect: "Deny"
+              Action: "iam:CreateUser"
+              Resource: "*"
+              Condition: {
+                "Custom:TrueIfAllTagsPresent": { # Custom Condition (multiple statements get created on the basis of aws:TagKeys array with condition operator 'ForAllValues:StringNotEquals')
+                  "aws:TagKeys": !Ref IAMUsersCreationSCPTagKeys
+                }
+              }
+            - !Ref AWS::NoValue
+
+  StackSetExecutionRole:
+    Condition: CreateStackSetExecutionRole
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref CfStackSetExecutionRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref AutomationAccountId
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess
+
+  EventBusRuleManagementSSOUserManager:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-sso-user-manager"
+      Description: Trigger Automation EventBus whenever an SSO User is disabled/deleted
+      EventPattern:
+        source:
+          - aws.sso-directory
+          - aws.identitystore
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - sso-directory.amazonaws.com
+            - identitystore.amazonaws.com
+          eventName:
+            - CreateUser
+            - DisableUser
+            - DeleteUser
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'sso-user-manager-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleManagement.Arn
+        }
+      ]
+
+  EventBusRuleManagementUserLogin:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-user-login"
+      Description: Trigger Automation EventBus whenever User Logs In
+      EventPattern:
+        source:
+          - aws.signin
+        detail-type:
+          - AWS Console Sign In via CloudTrail
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'user-login-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleManagement.Arn
+        }
+      ]
+
+  EventBusRuleManagementSSOUserLogin:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-sso-user-login-detection"
+      Description: Trigger Automation EventBus whenever an SSO User logs in
+      EventPattern:
+        source:
+          - aws.sso
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - sso.amazonaws.com
+          eventName:
+            - Authenticate
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'sso-user-login-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleManagement.Arn
+        }
+      ]
+
+  EventBusRuleManagementOrgAccountCreation:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-org-aws-account-creation"
+      Description: Trigger Automation EventBus whenever a new AWS Account is created through AWS Organizations
+      EventPattern:
+        source:
+          - aws.organizations
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - organizations.amazonaws.com
+          eventName:
+            - CreateAccountResult
+          serviceEventDetails:
+            createAccountStatus:
+              state:
+              - SUCCEEDED
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'org-aws-account-creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleManagement.Arn
+        }
+      ]
+
+  EventBusRuleManagementCTAccountCreation:
+    Condition: ControlTowerEnabled
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-ct-aws-account-creation"
+      Description: Trigger Automation EventBus whenever a new AWS Account is created through AWS Control Tower Account Factory
+      EventPattern:
+        source:
+          - aws.controltower
+        detail-type:
+          - AWS Service Event via CloudTrail
+        detail:
+          eventSource:
+            - controltower.amazonaws.com
+          eventName:
+            - CreateManagedAccount
+          serviceEventDetails:
+            createManagedAccountStatus:
+              state:
+              - SUCCEEDED
+      State: ENABLED
+      Targets: [
+        {
+          'Arn': !Sub 'arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}',
+          'Id': !Sub 'ct-aws-account-creation-${AWS::AccountId}',
+          'RoleArn': !GetAtt EventBusRoleManagement.Arn
+        }
+      ]
+
+  EventBusRoleManagement:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-send-automation-events"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: EventsAccessPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: SendEvents
+            Effect: Allow
+            Action:
+            - events:PutEvents
+            Resource: !Sub arn:aws:events:us-east-1:${AutomationAccountId}:event-bus/${AutomationEventBusName}
+
+  AttachSCPPoliciesToOrg:
+    Condition: CreateBlockResourcesSCP
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      Service: organizations
+      ServiceToken: !GetAtt OrgScpAttachmentLambda.Arn
+      KwArgs:
+        PolicyId: !GetAtt DenyServicesActionsSCP.Ids
+        TargetId: !Ref DeploymentTargets
+        ExcludeAccounts: !Ref ExcludeAccounts
+
+Outputs:
+  SSOCrossAccountRoleArn:
+    Description: ARN of SSO Cross Account Role
+    Value: !GetAtt SSOCrossAccountAssumeRole.Arn
+  ServiceControlPolicyIds:
+    Condition: CreateBlockResourcesSCP
+    Description: IDs of Service Control Policies
+    Value: !GetAtt DenyServicesActionsSCP.Ids

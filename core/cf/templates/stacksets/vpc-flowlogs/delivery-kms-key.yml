@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  This template creates the VPC FlowLogs delivery KMS key
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  LogArchiveAccountId:
+    Type: String
+    Description: AWS Account ID of the Control Tower Log Archive account.
+
+Conditions:
+  LogArchiveAccountIdEmpty: !Equals
+  - !Ref LogArchiveAccountId
+  - ""
+
+Resources:
+  FlowLogsDeliveryKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "${ProjectName} VPC FlowLogs Delivery Key"
+      EnableKeyRotation: True
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: !Sub "${ProjectName}-flowlogs-delivery-key"
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Action: 'kms:*'
+            Resource: '*'
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+          - Sid: Allow VPC Flow Logs to encrypt logs
+            Effect: Allow
+            Action: kms:GenerateDataKey
+            Resource: '*'
+            Principal:
+              Service: delivery.logs.amazonaws.com
+          - Sid: Allow alias creation during setup
+            Effect: Allow
+            Action: kms:CreateAlias
+            Condition:
+              StringEquals:
+                kms:CallerAccount: !Sub ${AWS::AccountId}
+                kms:ViaService: !Sub cloudformation.${AWS::Region}.amazonaws.com
+            Resource: '*'
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+          - Sid: Allow accounts access
+            Effect: Allow
+            Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+            Resource: '*'
+            Principal:
+              AWS:
+                - !If [LogArchiveAccountIdEmpty, !Ref AWS::NoValue, !Sub "arn:${AWS::Partition}:iam::${LogArchiveAccountId}:root"]
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+
+  FlowLogsDeliveryKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${ProjectName}-flowlogs-delivery-key"
+      TargetKeyId: !Ref FlowLogsDeliveryKey
+
+  FlowLogsDeliveryKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "/${ProjectName}/FLOW_LOGS_DELIVERY_KEY"
+      Description: VPC Flow Logs Delivery KMS Key ARN
+      SecretString: !Sub '{"KeyArn":"${FlowLogsDeliveryKey.Arn}"}'
+      KmsKeyId: !GetAtt FlowLogsDeliveryKey.Arn
+
+  FlowLogsDeliveryKeySecretPolicy:
+    Type: AWS::SecretsManager::ResourcePolicy
+    Properties:
+      SecretId: !Ref FlowLogsDeliveryKeySecret
+      ResourcePolicy:
+        Version: 2012-10-17
+        Statement:
+          - Action: secretsmanager:GetSecretValue
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${AWS::AccountId}:root
+                - !If [LogArchiveAccountIdEmpty, !Ref AWS::NoValue, !Sub "arn:aws:iam::${LogArchiveAccountId}:root"]
+            Resource: '*'
+            Condition:
+              ForAnyValue:StringEquals:
+                secretsmanager:VersionStage: AWSCURRENT
+
+Outputs:
+  FlowLogsDeliveryKeyArn:
+    Description: VPC Flow Logs Delivery KMS Key ARN
+    Value: !GetAtt FlowLogsDeliveryKey.Arn

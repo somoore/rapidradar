@@ -1,0 +1,48 @@
+#---------------------------------------------------------------------------------------#
+#                                       GUARDDUTY                                       #
+#---------------------------------------------------------------------------------------#
+EnableGuardDuty: true
+
+GuardDutyAdminAccountId: ""
+FindingPublishingFrequency: FIFTEEN_MINUTES
+GuardDutyDeliveryS3BucketPrefix: rapidradar-guardduty-delivery
+GuardDutySeverityLevels: "ALL"
+AutoEnableS3Logs: true
+EnableEKSAuditLogs: true
+AutoEnableMalwareProtection: true
+EnableRDSLoginEvents: true
+EnableEKSRuntimeMonitoring: true
+EnableEKSAddonManagement: true
+EnableLambdaNetworkLogs: true
+EnableEcsFargateAgentManagement: true
+EnableEc2AgentManagement: true
+
+#---------------------------------------------------------------------------------------#
+#                                      INSPECTOR2                                       #
+#---------------------------------------------------------------------------------------#
+EnableInspector2: true
+
+InspectorAdminAccountId: ""
+ScanComponents: "EC2,ECR,LAMBDA,LAMBDA_CODE"
+PushEcrRescanDuration: LIFETIME
+PullEcrRescanDuration: DAYS_180
+
+#---------------------------------------------------------------------------------------#
+#                                      SECURITYHUB                                      #
+#---------------------------------------------------------------------------------------#
+EnableSecurityHub: true
+
+SecurityHubAdminAccountId: ""
+EnableSecurityBestPracticesStandard: true
+SecurityBestPracticesStandardVersion: 1.0.0
+EnableCISStandard: false
+CISStandardVersion: 1.4.0
+EnablePCIStandard: false
+PCIStandardVersion: 3.2.1
+EnableNISTStandard: false
+NISTStandardVersion: 5.0.0
+
+#---------------------------------------------------------------------------------------#
+#                                 DEFAULT EBS ENCRYPTION                                #
+#---------------------------------------------------------------------------------------#
+EnableEBSDefaultEncryption: true

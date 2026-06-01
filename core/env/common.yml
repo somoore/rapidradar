@@ -1,0 +1,67 @@
+ProjectName: rapidradar
+AwsOrgName: "" # should not contain spaces
+DeploymentTargets: ""
+ExcludeAccounts: ""
+IsControlTowerEnabled: true
+LogArchiveAccountId: ""
+ActiveRegions: "us-east-1,us-east-2,us-west-1,us-west-2"
+CfStackSetExecutionRoleCreation: true
+
+# CloudTrail Trails Configuration
+CreateManagementTrail: false
+CreateDataTrail: true
+IsOrganizationTrail: true
+CentralizedLogsS3BucketName: aws-controltower-logs-<LOG_ARCHIVE_ACCOUNT_ID>-us-east-1
+TrailCloudWatchLogGroupName: "aws-controltower/CloudTrailLogs"
+
+# VPC Flow Logs Configuration
+EnableVpcFlowLogs: true
+FlowLogsDeliveryBucketPrefix: rapidradar-flowlogs-delivery-bucket
+VpcFlowLogsTagKeyValue: flowlog=ACCEPT
+
+# Functionality Support
+AddSupportforCMDB: true
+AddSupportforIAMKeyPairAccessTracker: true
+AddSupportforIPTracker: true
+AddSupportforUserOffboardingWorkflow: false
+
+# Cost Optimizer Configuration
+EnableCostOptimizerRecommendations: true
+
+# Alerts Config
+SenderEmailAddress: "user@example.com"
+ReceiverEmailAddressess: "user@example.com"
+SendHourlyAlertsForSeverityTypes: "CRITICAL,HIGH"
+AlertSuppressionResourceTagKeyValue: notifications=suppressed
+AlertSuppressionPermissionSetTagKeyValue: notifications=suppression-admin
+
+EngineerFacingNotificationsApp: slack
+EngineerFacingNotificationsConfigsSecretName: /rapidradar/ENGINEER_FACING_NOTIFICATION_CONFIGS
+SecurityAdminFacingNotificationsApp:
+SecurityAdminFacingNotificationsConfigsSecretName:
+
+EnableSlackSocketMode: false
+SlackBotConfigSecretName: /rapidradar/SLACK_BOT_SECRET
+SlackApiDomainName: ""
+SlackApiDomainCertificateArn: ""
+
+# Tailscale Config
+TrackTailscaleIPs: false
+TailnetName: ""
+OAuthClientId: ""
+OAuthClientSecretSSM: "/rapidradar/tailscale/OAUTH_CLIENT_SECRET"
+
+# Azure Cloud Config
+AddSupportforAzureCloud: false
+AzureCustomerId: ""
+AzureSharedKeySSM: "/rapidradar/azure/SHARED_KEY"
+AzureLogType: ""
+
+# PagerDuty Config
+AddSupportforPagerDuty: false
+CreateIncidentForSeverityTypes: "ALL"
+PagerDutyIntegrationType: "RESTAPI"
+PagerDutyRoutingKeySSM: "/rapidradar/pagerduty/ROUTING_KEY"
+PagerDutyApiTokenSSM: "/rapidradar/pagerduty/API_TOKEN"
+PagerDutyServiceId: ""
+PagerDutyUserEmailAddress: "user@example.com"

@@ -1,0 +1,59 @@
+AWSServiceDeploymentAction: "Delete"
+
+# EC2 Instance Tags SCP
+BlockEC2LaunchWithoutCertainTags: true
+EC2InstanceLaunchSCPTagKeys: "Name,DeployedBy,DeployMethod,Team"
+
+# EKS Cluster Tags SCP
+BlockEksClusterCreationWithoutCertainTags: true
+EksClusterCreationSCPTagKeys: "DeployedBy,DeployMethod,Team"
+
+# RDS Cluster and Instance Tags SCP
+BlockRdsClusterInstanceCreationWithoutCertainTags: true
+RdsClusterInstanceCreationSCPTagKeys: "DeployedBy,DeployMethod,Team"
+
+# EFS FileSystem Tags SCP
+BlockEfsFileSystemCreationWithoutCertainTags: true
+EfsFileSystemCreationSCPTagKeys: "DeployedBy,DeployMethod,Team"
+
+# EC2 Instance Launch without IMDSv2 SCP
+BlockEC2LaunchWithoutIMDSV2: true
+SCPBypassTagKeyEC2LaunchWithoutIMDSV2: "imdsv2-bypass"
+AlertOnEC2LaunchIMDSV2Bypass: true
+
+# EC2 Instance Launch with Public IP SCP
+BlockEC2LaunchWithPublicIP: true
+SCPBypassTagKeyEC2LaunchWithPublicIP: "publicip-bypass"
+AlertOnEC2LaunchPublicIPBypass: false
+
+# Unencrypted EBS Volume SCP
+BlockUnencryptedEBSVolumeCreation: true
+SCPBypassTagKeyEBSVolumeCreation: "encrypted-ebs-bypass"
+AlertOnUnencryptedEBSVolumeCreationBypass: false
+
+# LoadBalancer Creation SCP
+BlockLoadBalancerCreation: true
+SCPBypassTagKeyLoadBalancerCreation: "loadbalancer-creation-bypass"
+AlertOnLoadBalancerCreationBypass: false
+
+# Elastic IP Allocation SCP
+BlockEIPAllocation: true
+SCPBypassTagKeyEIPAllocation: "eip-allocation-bypass"
+AlertOnEIPAllocationBypass: false
+
+# Unencrypted RDS Clusters and Instances
+BlockUnencryptedRDSCreation: true
+SCPBypassTagKeyUnencryptedRDSCreation: "encrypted-rds-bypass"
+AlertOnUnencryptedRDSCreationBypass: false
+
+# IAM Users Creation SCP
+BlockIAMUsersCreation: true
+SCPBypassTagKeyIAMUsersCreation: "iam-scp-bypass"
+AlertOnIAMUsersCreationBypass: false
+
+# IAM Users Tags SCP
+BlockIAMUserCreationWithoutCertainTags: true
+IAMUsersCreationSCPTagKeys: "CreatedBy"
+
+# Public EBS Snapshots
+BlockMakeEBSSnapshotPublic: true

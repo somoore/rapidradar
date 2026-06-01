@@ -1,0 +1,1763 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates DynamoDB Tables
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - ProjectName
+      - Label:
+          default: Post Deploy SSM Automation
+        Parameters:
+          - TrackSSMDocumentAssociationFailures
+      - Label:
+          default: IAM Secret-Access KeyPair Access Tracker Project
+        Parameters:
+          - AddSupportforIAMKeyPairAccessTracker
+      - Label:
+          default: CMDB Project
+        Parameters:
+          - AddSupportforCMDB
+      - Label:
+          default: IP Tracker Project
+        Parameters:
+          - AddSupportforIPTracker
+      - Label:
+          default: Alerts Customization
+        Parameters:
+          - DisableDetectionStoppedEC2Instances
+          - DisableDetectionUnusedSecurityGroups
+          - DisableDetectionUnusedEBSVolumes
+    ParameterLabels:
+      ProjectName:
+        default: Project Name
+      TrackSSMDocumentAssociationFailures:
+        default: Track Failures for SSM Document Association?
+      AddSupportforIAMKeyPairAccessTracker:
+        default: Deploy IAM Secret-Access KeyPair Access Tracker Project?
+      AddSupportforCMDB:
+        default: Deploy CMDB Project?
+      AddSupportforIPTracker:
+        default: Deploy IP Tracker Project?
+      DisableDetectionStoppedEC2Instances:
+        default: Disable detection for stopped EC2 Instances?
+      DisableDetectionUnusedSecurityGroups:
+        default: Disable detection for unused Security Groups?
+      DisableDetectionUnusedEBSVolumes:
+        default: Disable detection for unused EBS Volumes?
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name
+    MaxLength: 20
+  TrackSSMDocumentAssociationFailures:
+    Type: String
+    Description: Set to True if you want to track failures for SSM Document Association
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIAMKeyPairAccessTracker:
+    Type: String
+    Description: Set to True if you want IAM Secret-Access KeyPair Access Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforCMDB:
+    Type: String
+    Description: Set to True if you want CMDB project deployed
+    AllowedValues:
+    - true
+    - false
+  AddSupportforIPTracker:
+    Type: String
+    Description: Set to True if you want IP Tracker project deployed
+    AllowedValues:
+    - true
+    - false
+  DisableDetectionStoppedEC2Instances:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for stopped EC2 Instances
+  DisableDetectionUnusedSecurityGroups:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for unused Security Groups
+  DisableDetectionUnusedEBSVolumes:
+    Type: String
+    AllowedValues:
+    - true
+    - false
+    Description: Set to True if you want to disable detection for unused EBS Volumes
+
+Conditions:
+  TrackSSMAssociationFailures: !Equals
+  - !Ref TrackSSMDocumentAssociationFailures
+  - true
+  DeployIAMKeyPairAccessTrackerProject: !Equals
+  - !Ref AddSupportforIAMKeyPairAccessTracker
+  - true
+  DeployCMDBProject: !Equals
+  - !Ref AddSupportforCMDB
+  - true
+  DeployIPTrackerProject: !Equals
+  - !Ref AddSupportforIPTracker
+  - true
+
+  IsEnabledStoppedEC2InstancesDetection: !Equals
+  - !Ref DisableDetectionStoppedEC2Instances
+  - false
+  IsEnabledUnusedSecurityGroupsDetection: !Equals
+  - !Ref DisableDetectionUnusedSecurityGroups
+  - false
+  IsEnabledUnusedEBSVolumesDetection: !Equals
+  - !Ref DisableDetectionUnusedEBSVolumes
+  - false
+
+Resources:
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DynamoDBAutoscalingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                Resource:
+                - !Sub "${SecurityGroupTable.Arn}*"
+                - !GetAtt IAMUsersTable.Arn
+                - !GetAtt S3BucketsTable.Arn
+                - !Sub "${RootIAMLoginsTable.Arn}*"
+                - !If [ IsEnabledStoppedEC2InstancesDetection, !GetAtt UnusedEC2InstancesTable.Arn, !Ref AWS::NoValue ]
+                - !If [ IsEnabledUnusedSecurityGroupsDetection, !GetAtt UnusedSecurityGroupsTable.Arn, !Ref AWS::NoValue ]
+                - !If [ IsEnabledUnusedEBSVolumesDetection, !GetAtt UnusedEBSVolumesTable.Arn, !Ref AWS::NoValue ]
+                - !GetAtt RemediatedResourcesTable.Arn
+                - !If [ DeployCMDBProject, !Sub "${ActiveResourcesTable.Arn}*", !Ref AWS::NoValue ]
+                - !If [ DeployCMDBProject, !GetAtt DeletedResourcesTable.Arn, !Ref AWS::NoValue ]
+                - !If [ DeployCMDBProject, !GetAtt WeeklyUserCostReportsTable.Arn, !Ref AWS::NoValue ]
+                - !If [ DeployCMDBProject, !GetAtt DailyUserCostReportsTable.Arn, !Ref AWS::NoValue ]
+                - !If [ DeployCMDBProject, !GetAtt MonthlyUserCostReportsTable.Arn, !Ref AWS::NoValue ]
+                - !If [ DeployIPTrackerProject, !Sub "${IPCorrelationTable.Arn}*", !Ref AWS::NoValue ]
+                - !If [ DeployIPTrackerProject, !Sub "${SSOUserIPHistoryTable.Arn}*", !Ref AWS::NoValue ]
+                - !If [ DeployIAMKeyPairAccessTrackerProject, !Sub "${IAMKeyPairAccessTrackerTable.Arn}*", !Ref AWS::NoValue ]
+                - !If [ TrackSSMAssociationFailures, !Sub "${SSMDocumentAssociationFailureTrackerTable.Arn}*", !Ref AWS::NoValue ]
+              - Effect: Allow
+                Action: application-autoscaling:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:SetAlarmState
+                  - cloudwatch:DeleteAlarms
+                Resource: "*"
+
+  SecurityGroupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-security-groups"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: security_group_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: security_group_id
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SecurityGroupIndex
+          KeySchema:
+            - AttributeName: security_group_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  SecurityGroupTableReadCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SecurityGroupTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SecurityGroupTableReadCapacityScalableTargetGSI:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SecurityGroupTable}/index/SecurityGroupIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SecurityGroupTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SecurityGroupTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SecurityGroupTableWriteCapacityScalableTargetGSI:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SecurityGroupTable}/index/SecurityGroupIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SecurityGroupTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SecurityGroupTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SecurityGroupTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SecurityGroupTableReadScalingPolicyGSI:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SecurityGroupTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SecurityGroupTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SecurityGroupTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SecurityGroupTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SecurityGroupTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  SecurityGroupTableWriteScalingPolicyGSI:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SecurityGroupTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SecurityGroupTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  IAMUsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-iam-users"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: iam_user
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: iam_user
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  IAMUsersTableReadCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMUsersTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMUsersTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMUsersTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMUsersTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMUsersTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMUsersTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  IAMUsersTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMUsersTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMUsersTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  S3BucketsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-s3-buckets"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: s3_bucket_name
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: s3_bucket_name
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  S3BucketsTableReadCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${S3BucketsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  S3BucketsTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${S3BucketsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  S3BucketsTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${S3BucketsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref S3BucketsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  S3BucketsTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${S3BucketsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref S3BucketsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  RootIAMLoginsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-root-iam-logins"
+      AttributeDefinitions:
+      - AttributeName: event_id
+        AttributeType: 'S'
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: ip_address
+        AttributeType: 'S'
+      - AttributeName: user
+        AttributeType: 'S'
+      - AttributeName: status
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: event_id
+        KeyType: HASH
+      - AttributeName: account_id
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: AccountIPIndex
+          KeySchema:
+            - AttributeName: account_id
+              KeyType: HASH
+            - AttributeName: ip_address
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+        - IndexName: UserStatusIndex
+          KeySchema:
+            - AttributeName: user
+              KeyType: HASH
+            - AttributeName: status
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  RootIAMLoginsTableReadCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableReadCapacityScalableTargetGSI1:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}/index/AccountIPIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableReadCapacityScalableTargetGSI2:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}/index/UserStatusIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableWriteCapacityScalableTargetGSI1:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}/index/AccountIPIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableWriteCapacityScalableTargetGSI2:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RootIAMLoginsTable}/index/UserStatusIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RootIAMLoginsTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  RootIAMLoginsTableReadScalingPolicyGSI1:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-read-autoscaling-policy-gsi1
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableReadCapacityScalableTargetGSI1
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  RootIAMLoginsTableReadScalingPolicyGSI2:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-read-autoscaling-policy-gsi2
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableReadCapacityScalableTargetGSI2
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  RootIAMLoginsTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  RootIAMLoginsTableWriteScalingPolicyGSI1:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-write-autoscaling-policy-gsi1
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableWriteCapacityScalableTargetGSI1
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  RootIAMLoginsTableWriteScalingPolicyGSI2:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RootIAMLoginsTable}-write-autoscaling-policy-gsi2
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RootIAMLoginsTableWriteCapacityScalableTargetGSI2
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  UnusedEC2InstancesTable:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-unused-ec2-instances"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: instance_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: instance_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  UnusedEC2InstancesTableReadCapacityScalableTarget:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedEC2InstancesTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedEC2InstancesTableWriteCapacityScalableTarget:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedEC2InstancesTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedEC2InstancesTableReadScalingPolicy:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedEC2InstancesTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedEC2InstancesTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  UnusedEC2InstancesTableWriteScalingPolicy:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedEC2InstancesTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedEC2InstancesTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  UnusedSecurityGroupsTable:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-unused-security-groups"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: security_group_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: security_group_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  UnusedSecurityGroupsTableReadCapacityScalableTarget:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedSecurityGroupsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedSecurityGroupsTableWriteCapacityScalableTarget:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedSecurityGroupsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedSecurityGroupsTableReadScalingPolicy:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedSecurityGroupsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedSecurityGroupsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  UnusedSecurityGroupsTableWriteScalingPolicy:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedSecurityGroupsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedSecurityGroupsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  UnusedEBSVolumesTable:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-unused-ebs-volumes"
+      AttributeDefinitions:
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: volume_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: account_id
+        KeyType: HASH
+      - AttributeName: volume_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  UnusedEBSVolumesTableReadCapacityScalableTarget:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedEBSVolumesTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedEBSVolumesTableWriteCapacityScalableTarget:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${UnusedEBSVolumesTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  UnusedEBSVolumesTableReadScalingPolicy:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedEBSVolumesTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedEBSVolumesTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  UnusedEBSVolumesTableWriteScalingPolicy:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${UnusedEBSVolumesTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UnusedEBSVolumesTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  RemediatedResourcesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-remediated-resources"
+      AttributeDefinitions:
+      - AttributeName: resource_id
+        AttributeType: 'S'
+      - AttributeName: account_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: resource_id
+        KeyType: HASH
+      - AttributeName: account_id
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  RemediatedResourcesTableReadCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RemediatedResourcesTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RemediatedResourcesTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${RemediatedResourcesTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  RemediatedResourcesTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RemediatedResourcesTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RemediatedResourcesTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  RemediatedResourcesTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${RemediatedResourcesTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref RemediatedResourcesTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  ActiveResourcesTable:
+    Condition: DeployCMDBProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-active-resources"
+      AttributeDefinitions:
+      - AttributeName: identifier
+        AttributeType: 'S'
+      - AttributeName: account_id
+        AttributeType: 'S'
+      - AttributeName: region
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: identifier
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: AccountRegionIndex
+          KeySchema:
+            - AttributeName: account_id
+              KeyType: HASH
+            - AttributeName: region
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  ActiveResourcesTableReadCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${ActiveResourcesTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  ActiveResourcesTableReadCapacityScalableTargetGSI:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${ActiveResourcesTable}/index/AccountRegionIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  ActiveResourcesTableWriteCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${ActiveResourcesTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  ActiveResourcesTableWriteCapacityScalableTargetGSI:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${ActiveResourcesTable}/index/AccountRegionIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  ActiveResourcesTableReadScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ActiveResourcesTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ActiveResourcesTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  ActiveResourcesTableReadScalingPolicyGSI:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ActiveResourcesTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ActiveResourcesTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  ActiveResourcesTableWriteScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ActiveResourcesTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ActiveResourcesTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  ActiveResourcesTableWriteScalingPolicyGSI:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ActiveResourcesTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ActiveResourcesTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  DeletedResourcesTable:
+    Condition: DeployCMDBProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-deleted-resources"
+      AttributeDefinitions:
+      - AttributeName: identifier
+        AttributeType: 'S'
+      - AttributeName: deleted_at
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: identifier
+        KeyType: HASH
+      - AttributeName: deleted_at
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  DeletedResourcesTableReadCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${DeletedResourcesTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  DeletedResourcesTableWriteCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${DeletedResourcesTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  DeletedResourcesTableReadScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${DeletedResourcesTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DeletedResourcesTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  DeletedResourcesTableWriteScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${DeletedResourcesTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DeletedResourcesTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  DailyUserCostReportsTable:
+    Condition: DeployCMDBProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-daily-user-cost-reports"
+      AttributeDefinitions:
+      - AttributeName: user
+        AttributeType: 'S'
+      - AttributeName: date
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: user
+        KeyType: HASH
+      - AttributeName: date
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  DailyUserCostReportsTableReadCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${DailyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  DailyUserCostReportsTableWriteCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${DailyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  DailyUserCostReportsTableReadScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${DailyUserCostReportsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DailyUserCostReportsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  DailyUserCostReportsTableWriteScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${DailyUserCostReportsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DailyUserCostReportsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  WeeklyUserCostReportsTable:
+    Condition: DeployCMDBProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-weekly-user-cost-reports"
+      AttributeDefinitions:
+      - AttributeName: user
+        AttributeType: 'S'
+      - AttributeName: date
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: user
+        KeyType: HASH
+      - AttributeName: date
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  WeeklyUserCostReportsTableReadCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${WeeklyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  WeeklyUserCostReportsTableWriteCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${WeeklyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  WeeklyUserCostReportsTableReadScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${WeeklyUserCostReportsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WeeklyUserCostReportsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  WeeklyUserCostReportsTableWriteScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${WeeklyUserCostReportsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WeeklyUserCostReportsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  MonthlyUserCostReportsTable:
+    Condition: DeployCMDBProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-monthly-user-cost-reports"
+      AttributeDefinitions:
+      - AttributeName: user
+        AttributeType: 'S'
+      - AttributeName: date
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: user
+        KeyType: HASH
+      - AttributeName: date
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  MonthlyUserCostReportsTableReadCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${MonthlyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  MonthlyUserCostReportsTableWriteCapacityScalableTarget:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${MonthlyUserCostReportsTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  MonthlyUserCostReportsTableReadScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${MonthlyUserCostReportsTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref MonthlyUserCostReportsTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  MonthlyUserCostReportsTableWriteScalingPolicy:
+    Condition: DeployCMDBProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${MonthlyUserCostReportsTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref MonthlyUserCostReportsTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  IPCorrelationTable:
+    Condition: DeployIPTrackerProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-ip-correlation"
+      AttributeDefinitions:
+      - AttributeName: sso_user_id
+        AttributeType: 'S'
+      - AttributeName: user
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: sso_user_id
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIndex
+          KeySchema:
+            - AttributeName: user
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  IPCorrelationTableReadCapacityScalableTarget:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IPCorrelationTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IPCorrelationTableReadCapacityScalableTargetGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IPCorrelationTable}/index/UserIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IPCorrelationTableWriteCapacityScalableTarget:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IPCorrelationTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IPCorrelationTableWriteCapacityScalableTargetGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IPCorrelationTable}/index/UserIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IPCorrelationTableReadScalingPolicy:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IPCorrelationTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IPCorrelationTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  IPCorrelationTableReadScalingPolicyGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IPCorrelationTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IPCorrelationTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  IPCorrelationTableWriteScalingPolicy:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IPCorrelationTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IPCorrelationTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  IPCorrelationTableWriteScalingPolicyGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IPCorrelationTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IPCorrelationTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  SSOUserIPHistoryTable:
+    Condition: DeployIPTrackerProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-sso-users-ip-history"
+      AttributeDefinitions:
+      - AttributeName: sso_user_id
+        AttributeType: 'S'
+      - AttributeName: user
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: sso_user_id
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIndex
+          KeySchema:
+            - AttributeName: user
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  SSOUserIPHistoryTableReadCapacityScalableTarget:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSOUserIPHistoryTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSOUserIPHistoryTableReadCapacityScalableTargetGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSOUserIPHistoryTable}/index/UserIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSOUserIPHistoryTableWriteCapacityScalableTarget:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSOUserIPHistoryTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSOUserIPHistoryTableWriteCapacityScalableTargetGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSOUserIPHistoryTable}/index/UserIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSOUserIPHistoryTableReadScalingPolicy:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSOUserIPHistoryTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSOUserIPHistoryTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SSOUserIPHistoryTableReadScalingPolicyGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSOUserIPHistoryTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSOUserIPHistoryTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SSOUserIPHistoryTableWriteScalingPolicy:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSOUserIPHistoryTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSOUserIPHistoryTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  SSOUserIPHistoryTableWriteScalingPolicyGSI:
+    Condition: DeployIPTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSOUserIPHistoryTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSOUserIPHistoryTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  IAMKeyPairAccessTrackerTable:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-iam-keypair-access-tracker"
+      AttributeDefinitions:
+      - AttributeName: iam_user
+        AttributeType: 'S'
+      - AttributeName: access_key_id
+        AttributeType: 'S'
+      - AttributeName: account_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: iam_user
+        KeyType: HASH
+      - AttributeName: access_key_id
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: AccountUserIndex
+          KeySchema:
+            - AttributeName: iam_user
+              KeyType: HASH
+            - AttributeName: account_id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  IAMKeyPairAccessTrackerTableReadCapacityScalableTarget:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMKeyPairAccessTrackerTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMKeyPairAccessTrackerTableReadCapacityScalableTargetGSI:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMKeyPairAccessTrackerTable}/index/AccountUserIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMKeyPairAccessTrackerTableWriteCapacityScalableTarget:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMKeyPairAccessTrackerTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMKeyPairAccessTrackerTableWriteCapacityScalableTargetGSI:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${IAMKeyPairAccessTrackerTable}/index/AccountUserIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  IAMKeyPairAccessTrackerTableReadScalingPolicy:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMKeyPairAccessTrackerTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMKeyPairAccessTrackerTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  IAMKeyPairAccessTrackerTableReadScalingPolicyGSI:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMKeyPairAccessTrackerTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMKeyPairAccessTrackerTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  IAMKeyPairAccessTrackerTableWriteScalingPolicy:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMKeyPairAccessTrackerTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMKeyPairAccessTrackerTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  IAMKeyPairAccessTrackerTableWriteScalingPolicyGSI:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${IAMKeyPairAccessTrackerTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref IAMKeyPairAccessTrackerTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  SSMDocumentAssociationFailureTrackerTable:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-ssm-doc-assoc-failure-tracker"
+      AttributeDefinitions:
+      - AttributeName: ssm_document_name
+        AttributeType: 'S'
+      - AttributeName: instance_id
+        AttributeType: 'S'
+      KeySchema:
+      - AttributeName: ssm_document_name
+        KeyType: HASH
+      - AttributeName: instance_id
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: EC2InstanceIndex
+          KeySchema:
+            - AttributeName: instance_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  SSMDocumentAssociationFailureTrackerTableReadCapacityScalableTarget:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSMDocumentAssociationFailureTrackerTable}"
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSMDocumentAssociationFailureTrackerTableReadCapacityScalableTargetGSI:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSMDocumentAssociationFailureTrackerTable}/index/EC2InstanceIndex"
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSMDocumentAssociationFailureTrackerTableWriteCapacityScalableTarget:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSMDocumentAssociationFailureTrackerTable}"
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSMDocumentAssociationFailureTrackerTableWriteCapacityScalableTargetGSI:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub "table/${SSMDocumentAssociationFailureTrackerTable}/index/EC2InstanceIndex"
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      MinCapacity: 1
+      MaxCapacity: 80
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  SSMDocumentAssociationFailureTrackerTableReadScalingPolicy:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSMDocumentAssociationFailureTrackerTable}-read-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSMDocumentAssociationFailureTrackerTableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SSMDocumentAssociationFailureTrackerTableReadScalingPolicyGSI:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSMDocumentAssociationFailureTrackerTable}-read-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSMDocumentAssociationFailureTrackerTableReadCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  SSMDocumentAssociationFailureTrackerTableWriteScalingPolicy:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSMDocumentAssociationFailureTrackerTable}-write-autoscaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSMDocumentAssociationFailureTrackerTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+
+  SSMDocumentAssociationFailureTrackerTableWriteScalingPolicyGSI:
+    Condition: TrackSSMAssociationFailures
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${SSMDocumentAssociationFailureTrackerTable}-write-autoscaling-policy-gsi
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SSMDocumentAssociationFailureTrackerTableWriteCapacityScalableTargetGSI
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+Outputs:
+  SecurityGroupTableName:
+    Description: DynamoDB Table Name for Security Groups
+    Value: !Ref SecurityGroupTable
+  IAMUsersTableName:
+    Description: DynamoDB Table Name for IAM User
+    Value: !Ref IAMUsersTable
+  S3BucketsTableName:
+    Description: DynamoDB Table Name for S3 Buckets
+    Value: !Ref S3BucketsTable
+  RootIAMLoginsTableName:
+    Description: DynamoDB Table Name for Root User and IAM Users Login Metadata
+    Value: !Ref RootIAMLoginsTable
+  UnusedEC2InstancesTableName:
+    Condition: IsEnabledStoppedEC2InstancesDetection
+    Description: DynamoDB Table Name for Unused EC2 Instances
+    Value: !Ref UnusedEC2InstancesTable
+  UnusedSecurityGroupsTableName:
+    Condition: IsEnabledUnusedSecurityGroupsDetection
+    Description: DynamoDB Table Name for Unused Security Groups
+    Value: !Ref UnusedSecurityGroupsTable
+  UnusedEBSVolumesTableName:
+    Condition: IsEnabledUnusedEBSVolumesDetection
+    Description: DynamoDB Table Name for EBS Volumes
+    Value: !Ref UnusedEBSVolumesTable
+  RemediatedResourcesTableName:
+    Description: DynamoDB Table Name for Remediated Findings of Resources
+    Value: !Ref RemediatedResourcesTable
+  ActiveResourcesTableName:
+    Condition: DeployCMDBProject
+    Description: DynamoDB Table Name for Active Resources
+    Value: !Ref ActiveResourcesTable
+  DeletedResourcesTableName:
+    Condition: DeployCMDBProject
+    Description: DynamoDB Table Name for Deleted Resources
+    Value: !Ref DeletedResourcesTable
+  DailyUserCostReportsTableName:
+    Condition: DeployCMDBProject
+    Description: DynamoDB Table Name for Daily User Cost Reports Metadata
+    Value: !Ref DailyUserCostReportsTable
+  WeeklyUserCostReportsTableName:
+    Condition: DeployCMDBProject
+    Description: DynamoDB Table Name for Weekly User Cost Reports Metadata
+    Value: !Ref WeeklyUserCostReportsTable
+  MonthlyUserCostReportsTableName:
+    Condition: DeployCMDBProject
+    Description: DynamoDB Table Name for Monthly User Cost Reports Metadata
+    Value: !Ref MonthlyUserCostReportsTable
+  IPCorrelationTableName:
+    Condition: DeployIPTrackerProject
+    Description: DynamoDB Table Name for IP Correlation
+    Value: !Ref IPCorrelationTable
+  SSOUserIPHistoryTableName:
+    Condition: DeployIPTrackerProject
+    Description: DynamoDB Table Name for SSO Users IP History
+    Value: !Ref SSOUserIPHistoryTable
+  IAMKeyPairAccessTrackerTableName:
+    Condition: DeployIAMKeyPairAccessTrackerProject
+    Description: DynamoDB Table Name for IAM Keypair Access Tracker
+    Value: !Ref IAMKeyPairAccessTrackerTable
+  SSMDocumentAssociationFailureTrackerTableName:
+    Condition: TrackSSMAssociationFailures
+    Description: DynamoDB Table Name for SSM Document Association Failure Tracker
+    Value: !Ref SSMDocumentAssociationFailureTrackerTable
