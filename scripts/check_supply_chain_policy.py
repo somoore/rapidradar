@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEX_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
-REQ_RE = re.compile(r"^([A-Za-z0-9_.-]+)==[^\\s]+")
+REQ_RE = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)")
 
 
 def normalize_package_name(name: str) -> str:
@@ -47,7 +47,7 @@ def check_requirement_lock(req_file: Path, errors: list[str]) -> None:
         fail(errors, req_file, None, f"missing hash lock file {lock_file.name}")
         return
 
-    direct_packages: set[str] = set()
+    direct_packages: dict[str, str] = {}
     for index, raw_line in enumerate(req_file.read_text().splitlines(), start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -62,9 +62,9 @@ def check_requirement_lock(req_file: Path, errors: list[str]) -> None:
         if not match:
             fail(errors, req_file, index, "direct requirement must use exact == version pinning")
             continue
-        direct_packages.add(normalize_package_name(match.group(1)))
+        direct_packages[normalize_package_name(match.group(1))] = match.group(2)
 
-    lock_packages: set[str] = set()
+    lock_packages: dict[str, str] = {}
     current_package: str | None = None
     current_has_hash = False
     for index, raw_line in enumerate(lock_file.read_text().splitlines(), start=1):
@@ -75,7 +75,7 @@ def check_requirement_lock(req_file: Path, errors: list[str]) -> None:
                 fail(errors, lock_file, index - 1, f"locked package {current_package} has no sha256 hash")
             current_package = normalize_package_name(match.group(1))
             current_has_hash = "--hash=sha256:" in line
-            lock_packages.add(current_package)
+            lock_packages[current_package] = match.group(2)
             continue
         if current_package and "--hash=sha256:" in line:
             current_has_hash = True
@@ -83,8 +83,19 @@ def check_requirement_lock(req_file: Path, errors: list[str]) -> None:
     if current_package and not current_has_hash:
         fail(errors, lock_file, None, f"locked package {current_package} has no sha256 hash")
 
-    for package in sorted(direct_packages - lock_packages):
+    for package in sorted(set(direct_packages) - set(lock_packages)):
         fail(errors, req_file, None, f"direct package {package} is missing from {lock_file.name}")
+
+    for package in sorted(set(direct_packages) & set(lock_packages)):
+        direct_version = direct_packages[package]
+        locked_version = lock_packages[package]
+        if direct_version != locked_version:
+            fail(
+                errors,
+                req_file,
+                None,
+                f"direct package {package} pins {direct_version}, but {lock_file.name} pins {locked_version}",
+            )
 
 
 def check_requirements(errors: list[str]) -> None:
