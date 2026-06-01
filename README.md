@@ -1,5 +1,9 @@
 # RapidRadar
 
+<p align="center">
+  <img src="assets/rapidradar-logo-transparent.png" alt="RapidRadar logo" width="180">
+</p>
+
 RapidRadar is an AWS organization security automation platform for teams that want to move from reactive alerting to proactive cloud governance.
 
 It watches high-risk AWS activity across accounts and regions, applies preventive guardrails where possible, enriches events with ownership context, notifies the right people, and can remediate common issues automatically or through Slack actions.

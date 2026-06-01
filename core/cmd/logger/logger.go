@@ -59,7 +59,7 @@ func Errorf(f string, args ...any) {
 }
 
 func Fatalf(f string, args ...any) {
-	log.Fatalf(colors.Red(fmt.Sprintf(f, args...)))
+	log.Fatalf("%s", colors.Red(fmt.Sprintf(f, args...)))
 }
 
 func Fatalln(message string) {

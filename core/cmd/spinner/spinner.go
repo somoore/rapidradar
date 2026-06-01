@@ -40,7 +40,7 @@ func init() {
 func update() {
 	if logger.Debug {
 		if len(statuses) > 0 {
-			logger.Debugf(statuses[len(statuses)-1])
+			logger.Debugf("%s", statuses[len(statuses)-1])
 			statuses = statuses[:len(statuses)-1]
 		}
 
