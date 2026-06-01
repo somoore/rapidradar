@@ -18,7 +18,7 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/gookit/color v1.5.4
 	github.com/nathan-fiscaletti/consolesize-go v0.0.0-20220204101620-317176b6684d
-	github.com/spf13/cobra v1.9.1
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.30.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -42,7 +42,7 @@ require (
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
