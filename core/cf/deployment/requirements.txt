@@ -1,8 +1,8 @@
-httplib2==0.31.2
+httplib2==0.32.0
 openpyxl==3.1.5
 XlsxWriter==3.2.9
 parliament==1.6.4
 pdpyras==5.4.1
 pytz==2026.2
 requests==2.34.2
-boto3==1.43.19
+boto3==1.43.40
