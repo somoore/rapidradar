@@ -48,10 +48,13 @@ def list_values(lines: list[str], key: str) -> set[str]:
         values: set[str] = set()
         for item in lines[start + 1:]:
             stripped = item.strip()
+            # YAML permits indentationless sequences, where "- value" is at
+            # the same indentation as its "key:" (used by GuardDuty here).
+            if stripped.startswith("- ") and indent(item) >= base:
+                values.add(stripped[2:].strip("'\""))
+                continue
             if stripped and indent(item) <= base:
                 break
-            if stripped.startswith("- "):
-                values.add(stripped[2:].strip("'\""))
         return values
     return set()
 
