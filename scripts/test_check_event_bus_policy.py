@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.check_event_bus_policy import list_values
+from scripts.check_event_bus_policy import list_values, rule_contract
 
 
 class ListValuesTest(unittest.TestCase):
@@ -26,6 +26,19 @@ class ListValuesTest(unittest.TestCase):
     def test_inline_scalar_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unsupported inline value"):
             list_values(["      source: aws.newservice"], "source")
+
+    def test_forwarded_rule_requires_both_dimensions(self) -> None:
+        resource = [
+            "  ForwardedRule:",
+            "    Properties:",
+            "      EventPattern:",
+            "        source:",
+            "          - aws.ec2",
+            "      Targets:",
+            "        - AutomationEventBusName",
+        ]
+        with self.assertRaisesRegex(ValueError, "without detail-type"):
+            rule_contract(resource, "test rule")
 
 
 if __name__ == "__main__":

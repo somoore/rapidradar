@@ -10,6 +10,31 @@ DELAY_SECONDS = 3
 LOGGER = logging.getLogger(getenv('PROJECT_NAME'))
 LOGGER.setLevel('INFO')
 
+IAM_USER_EVENT_SOURCES = [
+    'aws.backup',
+    'aws.controltower',
+    'aws.ec2',
+    'aws.eks',
+    'aws.elasticfilesystem',
+    'aws.elasticloadbalancing',
+    'aws.fsx',
+    'aws.guardduty',
+    'aws.iam',
+    'aws.identitystore',
+    'aws.organizations',
+    'aws.rds',
+    'aws.s3',
+    'aws.secretsmanager',
+    'aws.signin',
+    'aws.ssm',
+    'capture-existing-resources',
+    'detect-unused-resources',
+    'aws.sso',
+    'aws.sso-directory',
+]
+IAM_USER_EVENT_DETAIL_TYPES = ['AWS API Call via CloudTrail']
+
+
 class Events:
     def __init__(self, account_id, region):
         self.account_id = account_id
@@ -128,10 +153,8 @@ class Events:
                 event_rule = events.put_rule(
                     Name=event_rule_name,
                     EventPattern=json.dumps({
-                        "source": [{
-                            "prefix": ""
-                        }],
-                        "detail-type": ["AWS API Call via CloudTrail"],
+                        "source": IAM_USER_EVENT_SOURCES,
+                        "detail-type": IAM_USER_EVENT_DETAIL_TYPES,
                         "detail": {
                             "userIdentity": {
                             "type": ["IAMUser"],
@@ -140,7 +163,7 @@ class Events:
                         }
                     }),
                     State='ENABLED',
-                    Description=f'Event Rule to capture all events for Access Key ID {access_key_id} for IAM User {iam_user}',
+                    Description=f'Event Rule to capture policy-allowed events for Access Key ID {access_key_id} for IAM User {iam_user}',
                 )
                 events.put_targets(
                     Rule=event_rule['RuleArn'].split('/')[-1],
