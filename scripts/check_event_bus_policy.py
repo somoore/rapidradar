@@ -42,8 +42,15 @@ def nested_block(lines: list[str], key: str) -> list[str]:
 
 def list_values(lines: list[str], key: str) -> set[str]:
     for start, line in enumerate(lines):
-        if line.strip() != f"{key}:":
+        match = re.fullmatch(rf"{re.escape(key)}\s*:(.*)", line.strip())
+        if not match:
             continue
+        inline_value = match.group(1).strip()
+        if inline_value:
+            raise ValueError(
+                f"{key} must use a block list; unsupported inline value: "
+                f"{inline_value}"
+            )
         base = indent(line)
         values: set[str] = set()
         for item in lines[start + 1:]:

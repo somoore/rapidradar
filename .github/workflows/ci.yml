@@ -57,7 +57,9 @@ jobs:
         run: python -m compileall -q core/cf/deployment
 
       - name: Validate central event bus allowlist
-        run: python scripts/check_event_bus_policy.py
+        run: |
+          python -m unittest scripts/test_check_event_bus_policy.py
+          python scripts/check_event_bus_policy.py
 
       - name: Verify hash-locked Python dependencies
         run: |
