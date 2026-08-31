@@ -5,4 +5,4 @@ parliament==1.6.4
 pdpyras==5.4.1
 pytz==2026.3.post1
 requests==2.34.2
-boto3==1.43.61
+boto3==1.43.82
