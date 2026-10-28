@@ -132,6 +132,35 @@ def check_go_modules(errors: list[str]) -> None:
     if re.search(r"github\.com/aws/aws-sdk-go\s+v1", go_mod_text):
         fail(errors, go_mod, None, "AWS SDK for Go v1 is end-of-support; use aws-sdk-go-v2")
 
+    check_launcher_go_version(errors, go_mod_text)
+
+
+def check_launcher_go_version(errors: list[str], go_mod_text: str) -> None:
+    # The launcher installs Go on hosts without it. It must install the same
+    # version go.mod requires, or the first build fails (GOTOOLCHAIN=local) or
+    # downloads an unverified second toolchain.
+    launcher = ROOT / "core" / "rapidradar"
+    directive = re.search(r"^go\s+(\S+)", go_mod_text, re.MULTILINE)
+    if not launcher.exists() or not directive:
+        return
+    want = directive.group(1)
+    found = False
+    for index, line in enumerate(launcher.read_text().splitlines(), start=1):
+        match = re.match(r'\s*\$?GO_VERSION\s*=\s*"([^"]+)"', line)
+        if not match:
+            continue
+        found = True
+        if match.group(1) != want:
+            fail(
+                errors,
+                launcher,
+                index,
+                f"launcher installs Go {match.group(1)} but core/go.mod requires {want}; "
+                "update the version and installer checksums together",
+            )
+    if not found:
+        fail(errors, launcher, None, "could not find GO_VERSION in the launcher")
+
 
 def main() -> int:
     errors: list[str] = []
