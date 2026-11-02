@@ -11,6 +11,7 @@ from utils.cost_optimizer import CostOptimizer
 from utils.ec2 import EC2
 from utils.ssm import SSM
 from messenger.email_alerts import EmailAlert
+from messenger.sanitize import SafeHtml, escape_html
 from pagerduty.main import PagerDuty
 
 def handle_event(aws_org_name, deploy_cmdb_project, active_resources_table, weekly_user_cost_reports_table, enable_cost_optimizer_recommendations, track_ssm_doc_assoc_failures, create_pagerduty_incidents_for_ssm_failures, ssm_document_association_failure_tracker_table, create_incidents_on_pagerduty, is_pd_integration_type_restapi, pagerduty_routing_key, pagerduty_api_token, pagerduty_service_id, pagerduty_user_email_address, sender_email_address, receiver_email_addresses):
@@ -70,15 +71,15 @@ def handle_event(aws_org_name, deploy_cmdb_project, active_resources_table, week
 
                     user_resources_table.append('<tr>')
                     user_resources_table.append("<td style='padding:5px'> </td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['AccountName']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['AccountId']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['Region']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['ResourceType']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['ResourceId']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['CreatedAt']}</td>")
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['InstanceType']}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountName'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountId'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['Region'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceType'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceId'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['CreatedAt'])}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['InstanceType'])}</td>")
                     if enable_cost_optimizer_recommendations:
-                        user_resources_table.append(f"<td style='padding:5px'>{resource['OptimizerStatus']}</td>")
+                        user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['OptimizerStatus'])}</td>")
                     user_resources_table.append(f"<td style='padding:5px'>USD {weekly_cost:.2f}</td>")
                     user_resources_table.append('</tr>')
 
@@ -94,7 +95,7 @@ def handle_event(aws_org_name, deploy_cmdb_project, active_resources_table, week
 
                 user_resources_table.append('</table>')
                 user_resources_table.append('</div><br>')
-                user_resources_table = '\n'.join([str(elem) for elem in user_resources_table])
+                user_resources_table = SafeHtml('\n'.join([str(elem) for elem in user_resources_table]))
 
                 last_user_report_metadata = {}
                 if created_by:
@@ -176,14 +177,14 @@ def handle_event(aws_org_name, deploy_cmdb_project, active_resources_table, week
             failed_ssm_doc_associations.append('</tr>')
             for assoc_id, assoc_details in association_failed_instances.items():
                 failed_ssm_doc_associations.append('<tr>')
-                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{assoc_id}</td>")
-                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{assoc_details['DocumentName']}</td>")
-                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{assoc_details['AccountName']} ({assoc_details['AccountId']})</td>")
-                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{assoc_details['Region']}</td>")
-                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{', '.join(assoc_details['Instances'])}</td>")
+                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{escape_html(assoc_id)}</td>")
+                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{escape_html(assoc_details['DocumentName'])}</td>")
+                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{escape_html(assoc_details['AccountName'])} ({escape_html(assoc_details['AccountId'])})</td>")
+                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{escape_html(assoc_details['Region'])}</td>")
+                failed_ssm_doc_associations.append(f"<td style='padding:5px'>{escape_html(', '.join(assoc_details['Instances']))}</td>")
                 failed_ssm_doc_associations.append('</tr>')
             failed_ssm_doc_associations.append('</table>')
-        failed_ssm_doc_associations = '\n'.join([str(elem) for elem in failed_ssm_doc_associations])
+        failed_ssm_doc_associations = SafeHtml('\n'.join([str(elem) for elem in failed_ssm_doc_associations]))
         if failed_ssm_doc_associations:
             email_messenger = EmailAlert(sender_email=sender_email_address)
             body_html = f"""

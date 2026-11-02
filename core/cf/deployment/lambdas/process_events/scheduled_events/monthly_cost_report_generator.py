@@ -2,6 +2,7 @@ from collections import defaultdict
 import datetime
 from dateutil.relativedelta import relativedelta
 from messenger.email_alerts import EmailAlert
+from messenger.sanitize import SafeHtml, escape_html
 from utils.dynamodb import (
     UserCostReportsData,
     GetData
@@ -64,15 +65,15 @@ def handle_event(sender_email, active_resources_table, monthly_user_cost_reports
 
                 user_resources_table.append('<tr>')
                 user_resources_table.append("<td style='padding:5px'> </td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['AccountName']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['AccountId']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['Region']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['ResourceType']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['ResourceId']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['CreatedAt']}</td>")
-                user_resources_table.append(f"<td style='padding:5px'>{resource['InstanceType']}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountName'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountId'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['Region'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceType'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceId'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['CreatedAt'])}</td>")
+                user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['InstanceType'])}</td>")
                 if enable_cost_optimizer_recommendations:
-                    user_resources_table.append(f"<td style='padding:5px'>{resource['OptimizerStatus']}</td>")
+                    user_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['OptimizerStatus'])}</td>")
                 user_resources_table.append(f"<td style='padding:5px'>USD {monthly_cost:.2f}</td>")
                 user_resources_table.append('</tr>')
 
@@ -88,7 +89,7 @@ def handle_event(sender_email, active_resources_table, monthly_user_cost_reports
 
             user_resources_table.append('</table>')
             user_resources_table.append('</div><br>')
-            user_resources_table = '\n'.join([str(elem) for elem in user_resources_table])
+            user_resources_table = SafeHtml('\n'.join([str(elem) for elem in user_resources_table]))
 
             last_user_report_metadata = {}
             if created_by:

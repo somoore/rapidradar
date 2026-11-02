@@ -3,6 +3,7 @@ from collections import defaultdict
 import datetime
 from messenger.events_messenger import EventAlert
 from messenger.email_alerts import EmailAlert
+from messenger.sanitize import SafeHtml, escape_html
 from utils.iam import IAM
 from utils.dynamodb import (
     IAMKeyPairAccessTrackerData,
@@ -225,19 +226,19 @@ def handle_event(home_region, notification_app, webhook_urls, sender_email, auto
 
                     hr24_resources_table.append('<tr>')
                     hr24_resources_table.append("<td style='padding:5px'> </td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['AccountName']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['AccountId']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['Region']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['ResourceType']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['ResourceId']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['CreatedAt']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['InstanceType']}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountName'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountId'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['Region'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceType'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceId'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['CreatedAt'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['InstanceType'])}</td>")
                     if enable_cost_optimizer_recommendations:
-                        hr24_resources_table.append(f"<td style='padding:5px'>{resource['OptimizerStatus']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['HourlyCost']}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['DailyCost']}</td>")
+                        hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['OptimizerStatus'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['HourlyCost'])}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['DailyCost'])}</td>")
                     hr24_resources_table.append(f"<td style='padding:5px'>USD {weekly_cost:.2f}</td>")
-                    hr24_resources_table.append(f"<td style='padding:5px'>{resource['MonthlyCost']}</td>")
+                    hr24_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['MonthlyCost'])}</td>")
                     hr24_resources_table.append('</tr>')
 
                 hr24_resources_table.append('<tr>')
@@ -255,7 +256,7 @@ def handle_event(home_region, notification_app, webhook_urls, sender_email, auto
 
                 hr24_resources_table.append('</table>')
                 hr24_resources_table.append('</div><br>')
-                hr24_resources_table = '\n'.join([str(elem) for elem in hr24_resources_table])
+                hr24_resources_table = SafeHtml('\n'.join([str(elem) for elem in hr24_resources_table]))
 
             if len(hr24_old_resources) > 0:
                 hr24_old_resources_table.append('<div style="background-color:#ffffff; padding:5px 20px 5px 20px;border-radius: 10px">')
@@ -284,19 +285,19 @@ def handle_event(home_region, notification_app, webhook_urls, sender_email, auto
 
                     hr24_old_resources_table.append('<tr>')
                     hr24_old_resources_table.append("<td style='padding:5px'> </td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['AccountName']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['AccountId']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['Region']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['ResourceType']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['ResourceId']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['CreatedAt']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['InstanceType']}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountName'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountId'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['Region'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceType'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceId'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['CreatedAt'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['InstanceType'])}</td>")
                     if enable_cost_optimizer_recommendations:
-                        hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['OptimizerStatus']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['HourlyCost']}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['DailyCost']}</td>")
+                        hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['OptimizerStatus'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['HourlyCost'])}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['DailyCost'])}</td>")
                     hr24_old_resources_table.append(f"<td style='padding:5px'>USD {weekly_cost:.2f}</td>")
-                    hr24_old_resources_table.append(f"<td style='padding:5px'>{resource['MonthlyCost']}</td>")
+                    hr24_old_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['MonthlyCost'])}</td>")
                     hr24_old_resources_table.append('</tr>')
 
                 hr24_old_resources_table.append('<tr>')
@@ -314,7 +315,7 @@ def handle_event(home_region, notification_app, webhook_urls, sender_email, auto
 
                 hr24_old_resources_table.append('</table>')
                 hr24_old_resources_table.append('</div><br>')
-                hr24_old_resources_table = '\n'.join([str(elem) for elem in hr24_old_resources_table])
+                hr24_old_resources_table = SafeHtml('\n'.join([str(elem) for elem in hr24_old_resources_table]))
 
             if len(stopped_resources) > 0:
                 stopped_resources_table.append('<div style="background-color:#ffffff; padding:5px 20px 5px 20px;border-radius: 10px">')
@@ -330,20 +331,20 @@ def handle_event(home_region, notification_app, webhook_urls, sender_email, auto
 
                 for resource in stopped_resources:
                     stopped_resources_table.append('<tr>')
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['AccountName']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['AccountId']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['Region']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['ResourceType']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['ResourceId']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['CreatedAt']}</td>")
-                    stopped_resources_table.append(f"<td style='padding:5px'>{resource['InstanceType']}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountName'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['AccountId'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['Region'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceType'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['ResourceId'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['CreatedAt'])}</td>")
+                    stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['InstanceType'])}</td>")
                     if enable_cost_optimizer_recommendations:
-                        stopped_resources_table.append(f"<td style='padding:5px'>{resource['OptimizerStatus']}</td>")
+                        stopped_resources_table.append(f"<td style='padding:5px'>{escape_html(resource['OptimizerStatus'])}</td>")
                     stopped_resources_table.append('</tr>')
 
                 stopped_resources_table.append('</table>')
                 stopped_resources_table.append('</div><br>')
-                stopped_resources_table = '\n'.join([str(elem) for elem in stopped_resources_table])
+                stopped_resources_table = SafeHtml('\n'.join([str(elem) for elem in stopped_resources_table]))
 
             if findings_found:
                 total_hourly_cost = hr24_resources_total_hourly_cost + hr24_old_resources_total_hourly_cost
