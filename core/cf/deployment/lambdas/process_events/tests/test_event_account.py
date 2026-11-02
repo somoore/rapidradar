@@ -36,13 +36,30 @@ class ValidateEventAccountTest(unittest.TestCase):
         self.assertIsNone(validate_event_account(
             cloudtrail_event(MANAGEMENT, MANAGEMENT), MANAGEMENT, TARGETS))
 
-    def test_forged_envelope_account_is_rejected(self):
-        # The envelope claims a valid deployment target, but the CloudTrail identity comes from
-        # another account: this is the forged-event path that used to reach AssumeRole.
+    def test_cross_account_caller_on_target_resource_is_accepted(self):
+        # CloudTrail records cross-account access with the caller's account in userIdentity, e.g.
+        # an external account calling PutBucketAcl on a monitored bucket. It must reach the
+        # detectors.
+        event = cloudtrail_event("111122223333", "777788889999")
+        event["detail"]["eventSource"] = "s3.amazonaws.com"
+        event["detail"]["eventName"] = "PutBucketAcl"
+        self.assertIsNone(validate_event_account(event, MANAGEMENT, TARGETS))
+
+    def test_cross_account_caller_between_targets_is_accepted(self):
+        self.assertIsNone(validate_event_account(
+            cloudtrail_event("111122223333", "444455556666"), MANAGEMENT, TARGETS))
+
+    def test_non_target_envelope_with_target_identity_is_rejected(self):
+        # A publisher outside the deployment targets cannot borrow a target identity in detail.
         reason = validate_event_account(
-            cloudtrail_event("111122223333", "777788889999"), MANAGEMENT, TARGETS)
+            cloudtrail_event("777788889999", "111122223333"), MANAGEMENT, TARGETS)
         self.assertIsNotNone(reason)
-        self.assertIn("does not match", reason)
+        self.assertIn("not a configured deployment target", reason)
+
+    def test_eventbridge_account_field_is_validated(self):
+        event = cloudtrail_event(None, "111122223333", account="777788889999")
+        reason = validate_event_account(event, MANAGEMENT, TARGETS)
+        self.assertIsNotNone(reason)
 
     def test_unknown_account_is_rejected(self):
         reason = validate_event_account(
