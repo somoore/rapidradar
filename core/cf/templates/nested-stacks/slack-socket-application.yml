@@ -115,7 +115,10 @@ Resources:
             Effect: Allow
             Action:
             - sts:AssumeRole
-            Resource: "*"
+            # SEC: only the project's own cross-account roles may be assumed.
+            Resource:
+            - !Sub "arn:${AWS::Partition}:iam::*:role/${ProjectName}-sso-cross-account-role"
+            - !Sub "arn:${AWS::Partition}:iam::*:role/${ProjectName}-slack-cross-account-role-*"
   SlackAppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -127,14 +130,17 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+          Description: "Slack Socket Mode WebSocket and Slack API over HTTPS"
         - IpProtocol: tcp
           FromPort: 53
           ToPort: 53
           CidrIp: 0.0.0.0/0
+          Description: "DNS resolution over TCP"
         - IpProtocol: udp
           FromPort: 53
           ToPort: 53
           CidrIp: 0.0.0.0/0
+          Description: "DNS resolution over UDP"
   SlackAppCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -198,4 +204,4 @@ Resources:
           Subnets: !Ref PrivateSubnets
           SecurityGroups:
             - !GetAtt SlackAppSecurityGroup.GroupId
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED

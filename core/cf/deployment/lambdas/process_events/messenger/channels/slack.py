@@ -2,11 +2,12 @@ from typing import Optional
 import re
 import requests
 from utils.sso_helper import SSOHelper
+from messenger.sanitize import escape_mrkdwn, escape_mrkdwn_args, harden_message_methods
 class SlackMessenger():
     def __init__(self, account_id, account_name, org_name, region):
         self.account_id = account_id
-        self.account_name = account_name
-        self.org_name = org_name
+        self.account_name = escape_mrkdwn(account_name) if account_name is not None else account_name
+        self.org_name = escape_mrkdwn(org_name) if org_name is not None else org_name
         self.region = region
 
     def get_message(self, alert_id, message_params):
@@ -16,18 +17,18 @@ class SlackMessenger():
 class Messages():
     def __init__(self, account_id, account_name, org_name, region):
         self.account_id = account_id
-        self.account_name = account_name
-        self.org_name = org_name
+        self.account_name = escape_mrkdwn(account_name) if account_name is not None else account_name
+        self.org_name = escape_mrkdwn(org_name) if org_name is not None else org_name
         self.region = region
 
     def __get_tags(self, tags):
         tags_msg = ''
         for tag in tags:
             if '=' in tag:
-                key_value = tag.split('=')
-                tags_msg += f'{key_value[0]}: {key_value[1]}\n'
+                key_value = tag.split('=', 1)
+                tags_msg += f'{escape_mrkdwn(key_value[0])}: {escape_mrkdwn(key_value[1])}\n'
             else:
-                tags_msg += f'• {tag}\n'
+                tags_msg += f'• {escape_mrkdwn(tag)}\n'
         return tags_msg
 
     @staticmethod
@@ -75,12 +76,12 @@ class Messages():
             if len(attached_instances) > 0:
                 instances_details = ''
                 for instance in attached_instances:
-                    instances_details += f"• {instance['ResourceId']} ({instance['Context']})\n"
+                    instances_details += f"• {escape_mrkdwn(instance['ResourceId'])} ({escape_mrkdwn(instance['Context'])})\n"
                 attachment_details.append(f"*EC2 Instance(s):*\n{instances_details}")
             if len(attached_lb) > 0:
                 lb_details = ''
                 for lb in attached_lb:
-                    lb_details += f"• {lb['ResourceId']} ({lb['Context']})\n"
+                    lb_details += f"• {escape_mrkdwn(lb['ResourceId'])} ({escape_mrkdwn(lb['Context'])})\n"
                 attachment_details.append(f"*LoadBalancers(s):*\n{lb_details}")
         attachment_details = '\n'.join(attachment_details) if attachment_details else '*Attachment:* Currently Not Attached to Any Resource' if not is_attached else ''
         return attachment_details
@@ -1513,3 +1514,7 @@ AWS Region: {self.region}
 *Please add the following missing tags to {resource_type} to have it successfully create:*
 ```{self.__get_tags(tags)}```"""
         return self.__get_formatted_json(message)
+
+
+# SEC: escape every dynamic string passed to a message builder (Slack mrkdwn injection).
+harden_message_methods(Messages, escape_mrkdwn_args, skip=())

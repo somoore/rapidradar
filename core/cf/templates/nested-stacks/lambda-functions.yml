@@ -1028,6 +1028,7 @@ Resources:
     Properties:
        QueueName: !Sub "${ProjectName}-aws-events-processor-lambda-dlq"
        VisibilityTimeout: 900
+       KmsMasterKeyId: alias/aws/sqs
 
   EventsProcessorLambdaDLQPolicy:
     Type: AWS::SQS::QueuePolicy
@@ -1042,6 +1043,11 @@ Resources:
               Service: lambda.amazonaws.com
             Action: SQS:SendMessage
             Resource: !GetAtt EventsProcessorLambdaDLQ.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !GetAtt EventsProcessor.Arn
       Queues:
         - !Ref EventsProcessorLambdaDLQ
 
@@ -1106,6 +1112,7 @@ Resources:
     Properties:
       TopicName: !Sub ${ProjectName}-cloudwatch-alarms
       DisplayName: !Sub ${ProjectName} lambda error alerts topic
+      KmsMasterKeyId: alias/aws/sns
   CloudWatchAlarmsSubscriptionsCreatorLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -4888,22 +4895,51 @@ Resources:
               if event.get('Service') != 'stepfunctions':
                   raise ValueError('Only Step Functions executions are supported.')
 
-              kwargs = {}
-              for key, value in event.get('KwArgs', {}).items():
-                  try:
-                      if key == 'input':
-                          kwargs[key] = json.dumps(value)
-                      elif isinstance(value, str):
-                          kwargs[key] = ast.literal_eval(value)
-                      else:
-                          kwargs[key] = value
-                  except Exception as e:
-                      print(str(e))
-                      kwargs[key] = value
+              # SEC: the invoke permission is organization-wide, so the payload is validated here.
+              # Only the keys the supported state machines need are accepted.
+              allowed_keys = {'stateMachineArn', 'input', 'name'}
+              raw_kwargs = event.get('KwArgs') or {}
+              if not isinstance(raw_kwargs, dict):
+                  raise ValueError('KwArgs must be an object.')
+              unknown_keys = set(raw_kwargs) - allowed_keys
+              if unknown_keys:
+                  raise ValueError(f"Unsupported KwArgs key(s): {sorted(unknown_keys)}")
 
-              state_machine_arn = kwargs.get('stateMachineArn', '')
+              kwargs = {}
+              state_machine_arn = raw_kwargs.get('stateMachineArn', '')
+              if isinstance(state_machine_arn, str):
+                  try:
+                      state_machine_arn = ast.literal_eval(state_machine_arn)
+                  except Exception:
+                      pass
+              if not isinstance(state_machine_arn, str):
+                  raise ValueError('stateMachineArn must be a string.')
+              kwargs['stateMachineArn'] = state_machine_arn
+
+              if 'input' in raw_kwargs:
+                  execution_input = raw_kwargs['input']
+                  if isinstance(execution_input, str):
+                      try:
+                          json.loads(execution_input)
+                      except ValueError:
+                          raise ValueError('input must be valid JSON.')
+                      serialized_input = execution_input
+                  elif isinstance(execution_input, (dict, list)):
+                      serialized_input = json.dumps(execution_input)
+                  else:
+                      raise ValueError('input must be an object, array or JSON string.')
+                  if len(serialized_input.encode('utf-8')) > 262144:
+                      raise ValueError('input exceeds the Step Functions 256 KiB limit.')
+                  kwargs['input'] = serialized_input
+
+              if 'name' in raw_kwargs:
+                  execution_name = raw_kwargs['name']
+                  if not isinstance(execution_name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', execution_name):
+                      raise ValueError('name must match [A-Za-z0-9_-]{1,80}.')
+                  kwargs['name'] = execution_name
+
               allowed_state_machine_pattern = rf"^arn:[^:]+:states:[a-z0-9-]+:{AUTOMATION_ACCOUNT_ID}:stateMachine:{re.escape(PROJECT_NAME)}-"
-              if not re.match(allowed_state_machine_pattern, state_machine_arn):
+              if not re.match(allowed_state_machine_pattern, kwargs['stateMachineArn']):
                   raise ValueError('State machine ARN is outside the RapidRadar project boundary.')
 
               client = boto3.client('stepfunctions')
@@ -4920,6 +4956,10 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref StepFunctionExecutorLambda
+      # The only intended caller is the child-account custom-resource triggerer, whose ARNs cannot
+      # be enumerated in a single resource policy. AWS::Lambda::Permission has no Condition
+      # property and does not accept wildcard principals, so organization scope is the tightest
+      # CFN-expressible bound; the function itself allowlists KwArgs and validates its input.
       Principal: "*"
       PrincipalOrgID: !Ref OrganizationId
 
@@ -5111,7 +5151,10 @@ Resources:
             Effect: Allow
             Action:
             - sts:AssumeRole
-            Resource: "*"
+            # SEC: only the project's own cross-account roles may be assumed.
+            Resource:
+            - !Sub "arn:${AWS::Partition}:iam::*:role/${ProjectName}-sso-cross-account-role"
+            - !Sub "arn:${AWS::Partition}:iam::*:role/${ProjectName}-slack-cross-account-role-*"
   SlackInteractivityBackgroundTaskRunner:
     Condition: EnableSlackInteractivity
     Type: AWS::Lambda::Function
@@ -5142,6 +5185,9 @@ Resources:
       FunctionName: !Ref SlackInteractivityBackgroundTaskRunner
       Action: lambda:InvokeFunction
       Principal: lambda.amazonaws.com
+      # Confused-deputy guard: only this automated invocation path may invoke the function.
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt SlackInteractivityLambda.Arn
   SlackBackgroundTaskRunnerCrossAccountAccessDeniedMetricFilter:
     Condition: EnableSlackInteractivity
     Type: AWS::Logs::MetricFilter

@@ -104,6 +104,11 @@ Resources:
     Properties:
       RestApiId: !Ref ApiGatewayRestApi
       Name: SlackRequestAuthorizer
+      # SEC: this is a pre-filter, not authentication. A REQUEST authorizer receives only
+      # headers/path/context from API Gateway - never the body - so the Slack HMAC
+      # (v0:<timestamp>:<body>) cannot be verified here. responses_handler.verify_slack_request
+      # performs the constant-time HMAC check with the signing secret before any action, and WAF
+      # rate-limits this endpoint. See docs/architecture.md ("Slack request authentication").
       Type: REQUEST
       IdentitySource: "method.request.header.X-Slack-Signature,method.request.header.X-Slack-Request-Timestamp"
       AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackRequestVerifierLambdaARN}/invocations"

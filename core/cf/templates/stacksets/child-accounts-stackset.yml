@@ -805,6 +805,8 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${ProjectName}-${AWS::AccountId}-${AWS::Region}-cloudtrail-logs"
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -2971,12 +2973,6 @@ Resources:
         Statement:
         - Effect: "Allow"
           Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-            - sts:AssumeRole
-        - Effect: "Allow"
-          Principal:
             AWS:
             - !Sub arn:${AWS::Partition}:iam::${AutomationAccountId}:root
           Action:
@@ -3147,13 +3143,7 @@ Resources:
           - iam:DetachRolePolicy
           - iam:DeleteRolePolicy
           - iam:UpdateAccessKey
-          - iam:AttachRolePolicy
-          - iam:CreateRole
-          - iam:CreateInstanceProfile
-          - iam:AddRoleToInstanceProfile
-          - iam:CreatePolicy*
           - iam:DeletePolicy*
-          - iam:PassRole
           - pricing:GetProducts
           - rds:AddTagsToResource
           - rds:ModifyDBSnapshotAttribute
@@ -3171,12 +3161,6 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-        - Effect: "Allow"
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-            - sts:AssumeRole
         - Effect: "Allow"
           Principal:
             AWS:
@@ -3327,7 +3311,6 @@ Resources:
             Action:
             - iam:GetLoginProfile
             - iam:ListAttachedRolePolicies
-            - iam:AttachRolePolicy
             - iam:*AccessKey*
             - iam:DetachRolePolicy
             - iam:DeleteRolePolicy
@@ -3341,13 +3324,8 @@ Resources:
             - iam:GetPolicy
             - iam:GetPolicyVersion
             - iam:ListPolicyVersions
-            - iam:CreatePolicy*
-            - iam:CreateRole
-            - iam:PassRole
             - iam:ListUserTags
             - iam:GetInstanceProfile
-            - iam:CreateInstanceProfile
-            - iam:AddRoleToInstanceProfile
             - iam:ListInstanceProfilesForRole
             - iam:ListRoles
             - iam:ListUsers

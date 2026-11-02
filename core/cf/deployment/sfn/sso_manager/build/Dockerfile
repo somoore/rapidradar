@@ -7,4 +7,8 @@ RUN python3 -m pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY . .
 
+RUN adduser -D -u 10001 appuser && chown -R appuser:appuser /app
+
+USER 10001
+
 CMD ["python3", "app.py"]

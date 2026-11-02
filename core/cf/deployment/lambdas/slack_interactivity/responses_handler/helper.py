@@ -1,5 +1,6 @@
 import json
 from os import getenv
+import math
 import time
 import hmac
 import hashlib
@@ -23,6 +24,9 @@ def verify_slack_request(slack_signing_secret: str, headers: dict, body: str):
     try:
         ts = float(slack_timestamp)
     except ValueError:
+        LOGGER.error("Invalid timestamp format.")
+        return False, "Invalid timestamp format."
+    if not math.isfinite(ts):
         LOGGER.error("Invalid timestamp format.")
         return False, "Invalid timestamp format."
     # Prevent replay attacks (older than 5 minutes)
@@ -49,7 +53,7 @@ def invoke_background_task(payload: json):
             InvocationType='Event',
             Payload=json.dumps(payload)
         )
-        LOGGER.info("Successfully triggered background task runner with payload: %s", payload)
+        LOGGER.info("Successfully triggered background task runner for action: %s", payload.get("Action") if isinstance(payload, dict) else "unknown")
         return True
     except Exception as e:
         LOGGER.error("Error invoking background Lambda: %s", e)

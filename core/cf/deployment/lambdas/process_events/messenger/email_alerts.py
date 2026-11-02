@@ -6,6 +6,7 @@ import datetime
 from typing import Optional
 import boto3
 from utils.secretsmanager import GetConfig
+from messenger.sanitize import escape_html, escape_html_args, harden_message_methods
 
 AWS_ORG_NAME = getenv('AWS_ORG_NAME')
 SSO_CROSS_ACCOUNT_ROLE_ARN = getenv('SSO_CROSS_ACCOUNT_ROLE_ARN')
@@ -25,8 +26,8 @@ class EmailAlert:
         self.region = region
         self.account_name = None
         if account_id:
-            self.account_name = self.__get_account_name(self.account_id)
-        self.org_name = AWS_ORG_NAME
+            self.account_name = escape_html(self.__get_account_name(self.account_id))
+        self.org_name = escape_html(AWS_ORG_NAME)
 
     @staticmethod
     def __is_user_email(iam_user):
@@ -45,12 +46,12 @@ class EmailAlert:
             if len(attached_instances) > 0:
                 instances_details = ''
                 for instance in attached_instances:
-                    instances_details += f"• {instance['ResourceId']} ({instance['Context']})<br>"
+                    instances_details += f"• {escape_html(instance['ResourceId'])} ({escape_html(instance['Context'])})<br>"
                 attachment_details.append(f"<b>EC2 Instance(s):</b><br>{instances_details}")
             if len(attached_lb) > 0:
                 lb_details = ''
                 for lb in attached_lb:
-                    lb_details += f"• {lb['ResourceId']} ({lb['Context']})<br>"
+                    lb_details += f"• {escape_html(lb['ResourceId'])} ({escape_html(lb['Context'])})<br>"
                 attachment_details.append(f"<b>LoadBalancers(s):</b><br>{lb_details}")
             attachment_details.append('</div><br>')
         attachment_details = '<br>'.join(attachment_details) if attachment_details else '<b>Attachment:</b> Currently Not Attached to Any Resource' if not is_attached else ''
@@ -1253,8 +1254,12 @@ class EmailAlert:
         tags_msg = ''
         for tag in tags:
             if '=' in tag:
-                key_value = tag.split('=')
-                tags_msg += f'{key_value[0]}: <font color=#808080>{key_value[1]}</font><br>'
+                key_value = tag.split('=', 1)
+                tags_msg += f'{escape_html(key_value[0])}: <font color=#808080>{escape_html(key_value[1])}</font><br>'
             else:
-                tags_msg += f'• {tag}<br>'
+                tags_msg += f'• {escape_html(tag)}<br>'
         return tags_msg
+
+
+# SEC: escape every dynamic string passed to a message builder (SES HTML injection).
+harden_message_methods(EmailAlert, escape_html_args)

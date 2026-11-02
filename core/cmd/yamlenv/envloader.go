@@ -198,7 +198,7 @@ func getNotificationsAppSupportedConfig(notificationsApp string) []string {
 func getAllSSMParameterItemsNamesMap(envVars map[string]string) (map[string]string, map[string]any, map[string]any) {
 	notificationsConfigSecretNamesMap := map[string]any{}
 	notificationsConfigVars := map[string]map[string]string{
-		"APP BASED": {
+		"APP BASED": { // #nosec G101 -- Secrets Manager field name, not a credential value.
 			"BOT_OAUTH_TOKEN": "OAuth Token for your Slack bot App",
 			"CHANNEL_ID":      "ID of the Slack channel designated to receive threat alerts",
 		},
@@ -218,13 +218,13 @@ func getAllSSMParameterItemsNamesMap(envVars map[string]string) (map[string]stri
 	var slackSecretKeys map[string]string
 	enableSlackSocketMode, _ := strconv.ParseBool(os.Getenv("EnableSlackSocketMode"))
 	if enableSlackSocketMode {
-		slackSecretKeys = map[string]string{
+		slackSecretKeys = map[string]string{ // #nosec G101 -- Secrets Manager field name, not a credential value.
 			"BOT_OAUTH_TOKEN":     "OAuth Token for your Slack bot",
 			"BOT_APP_TOKEN":       "App-level token for Slack Socket Mode connection",
 			"SECURITY_CHANNEL_ID": "ID of the Slack channel designated for security notifications",
 		}
 	} else {
-		slackSecretKeys = map[string]string{
+		slackSecretKeys = map[string]string{ // #nosec G101 -- Secrets Manager field name, not a credential value.
 			"BOT_OAUTH_TOKEN":      "OAuth Token for your Slack bot",
 			"SECURITY_CHANNEL_ID":  "ID of the Slack channel designated for security notifications",
 			"SLACK_SIGNING_SECRET": "Signing Secret from Slack used to verify that incoming requests are authentic",
@@ -241,11 +241,11 @@ func getAllSSMParameterItemsNamesMap(envVars map[string]string) (map[string]stri
 		"AddSupportforAzureCloud": {
 			"AzureSharedKeySSM": "Shared Key for Azure Cloud",
 		},
-		"AddSupportforPagerDuty": {
+		"AddSupportforPagerDuty": { // #nosec G101 -- Secrets Manager field name, not a credential value.
 			"PagerDutyRoutingKeySSM": "Routing/Integration Key for Events API v2 for PagerDuty",
 			"PagerDutyApiTokenSSM":   "API token for PagerDuty REST API",
 		},
-		"TrackTailscaleIPs": {
+		"TrackTailscaleIPs": { // #nosec G101 -- Secrets Manager field name, not a credential value.
 			"OAuthClientSecretSSM": "Oauth Client Secret for TailScale",
 		},
 	}

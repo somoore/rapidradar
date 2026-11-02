@@ -101,7 +101,8 @@ from scheduled_events import (
 from utils.secretsmanager import GetConfig
 from utils.ssm import Decrypt
 from utils.sso_helper import SSOHelper
-from utils.utility import AWSHelper, Tailscale
+from utils.utility import AWSHelper, Tailscale, DEPLOYMENT_TARGET_ACCOUNTS
+from utils.event_account import validate_event_account
 from utils.dynamodb import (
     UsersIPData,
     GetData
@@ -116,6 +117,7 @@ DEPLOYMENT_TARGETS = getenv('DEPLOYMENT_TARGETS').replace(' ', '').split(',')
 EXCLUDE_ACCOUNTS = str(getenv('EXCLUDE_ACCOUNTS'))
 EXCLUDE_ACCOUNTS = EXCLUDE_ACCOUNTS.replace(' ', '').split(',') if EXCLUDE_ACCOUNTS else []
 LOG_ARCHIVE_ACCOUNT_ID = getenv('LOG_ARCHIVE_ACCOUNT_ID')
+MANAGEMENT_ACCOUNT_ID = getenv('MANAGEMENT_ACCOUNT_ID')
 HOME_REGION = getenv('HOME_REGION')
 ACTIVE_REGIONS = getenv('ACTIVE_REGIONS').replace(' ', '').split(',')
 CROSS_ACCOUNT_ROLE = getenv('CROSS_ACCOUNT_ROLE')
@@ -354,6 +356,10 @@ def lambda_handler(event, context):
     if 'Records' in event:
         LOGGER.info("INCOMING EVENT IS FROM SQS. EXTRACTING MESSAGE...")
         event = json.loads(event['Records'][0]['body'])
+    rejection_reason = validate_event_account(event, MANAGEMENT_ACCOUNT_ID, DEPLOYMENT_TARGET_ACCOUNTS)
+    if rejection_reason:
+        LOGGER.error("Rejecting event: %s", rejection_reason)
+        return
     LOGGER.info('PROCESSING NEW EVENT: %s', event)
     slack_oauth_token = ""
     if SLACK_BOT_CONFIG and SLACK_BOT_CONFIG is not None:

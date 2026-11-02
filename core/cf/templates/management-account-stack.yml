@@ -1119,6 +1119,12 @@ Resources:
               - "ec2:RunInstances"
               Resource:
               - "arn:aws:ec2:*:*:instance/*"
+              # NOTE: aws:TagKeys is evaluated over the *whole request*, so a tag placed on any
+              # resource in a multi-resource RunInstances call satisfies this exception. AWS does
+              # not allow a per-resource condition key to be parameterised in an SCP. The
+              # compensating detective control is AlertOnEC2LaunchIMDSV2Bypass, which inspects
+              # only the instance's tagSpecificationSet entry and therefore still fires when the
+              # exception was supplied on a different resource type.
               Condition: {
                 "StringNotEquals": {"ec2:MetadataHttpTokens": "required"},
                 "ForAllValues:StringNotEquals": {"aws:TagKeys": [!Ref SCPBypassTagKeyEC2LaunchWithoutIMDSV2]}

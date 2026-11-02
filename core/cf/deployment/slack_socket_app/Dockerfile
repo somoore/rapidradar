@@ -3,9 +3,9 @@ FROM python:3.12-alpine@sha256:b658b05ce9c4eb97ec6fc19424818a1f31993659c2b505a53
 WORKDIR /app
 
 COPY . .
-RUN adduser -D appuser
+RUN adduser -D -u 10001 appuser
 
-USER appuser
+USER 10001
 ENV PATH="/home/appuser/.local/bin:$PATH"
 
 RUN python3 -m pip install --user --no-cache-dir --require-hashes -r requirements.lock
