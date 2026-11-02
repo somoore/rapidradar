@@ -21,12 +21,31 @@ if not OAUTH_TOKEN or not SECURITY_CHANNEL_ID or not APP_TOKEN:
 
 app = App(token=OAUTH_TOKEN)
 
+_REDACTED_BODY_KEYS = ("response_url", "trigger_id", "token", "access_token", "bot_token")
+
+
+def _redact_body(body):
+    """Remove short-lived Slack credentials before logging an interaction body.
+
+    `response_url` is a bearer credential that can post into the channel and `trigger_id` can open
+    modals on the user's behalf; neither belongs in CloudWatch logs.
+    """
+    if not isinstance(body, dict):
+        return body
+    redacted = dict(body)
+    for key in _REDACTED_BODY_KEYS:
+        if key in redacted:
+            redacted[key] = "[REDACTED]"
+    if isinstance(redacted.get("view"), dict):
+        redacted["view"] = {**redacted["view"], "private_metadata": "[REDACTED]"}
+    return redacted
+
 @app.action("action_acknowledge")
 def handle_acknowledge_action(ack, body, respond):
     """Handle Acknowledge action"""
     ack()
     try:
-        LOGGER.info("Received action_acknowledge event: %s", body)
+        LOGGER.info("Received action_acknowledge event: %s", _redact_body(body))
         chosen_action = body["actions"][0]
         action_value = json.loads(chosen_action["value"])
         resource_metadata = json.loads(action_value["metadata"])
@@ -41,7 +60,7 @@ def handle_tagging_action(ack, body):
     """Handle tagging action"""
     ack()
     try:
-        LOGGER.info("Received action_tag_resource event: %s", body)
+        LOGGER.info("Received action_tag_resource event: %s", _redact_body(body))
         chosen_action = body["actions"][0]
         action_value = json.loads(chosen_action["value"])
         trigger_id = body["trigger_id"]
@@ -64,7 +83,7 @@ def handle_delete_action(ack, body, fail, respond):
     """Handle Delete action"""
     ack()
     try:
-        LOGGER.info("Received action_delete_resource event: %s", body)
+        LOGGER.info("Received action_delete_resource event: %s", _redact_body(body))
         chosen_action = body["actions"][0]
         action_value = json.loads(chosen_action["value"])
         resource_metadata = json.loads(action_value["metadata"])
@@ -82,7 +101,7 @@ def handle_remediate_action(ack, body, fail, respond):
     """Handle Remediate action"""
     ack()
     try:
-        LOGGER.info("Received action_remediate_resource event: %s", body)
+        LOGGER.info("Received action_remediate_resource event: %s", _redact_body(body))
         chosen_action = body["actions"][0]
         action_value = json.loads(chosen_action["value"])
         resource_metadata = json.loads(action_value["metadata"])
@@ -100,7 +119,7 @@ def handle_report_to_security_action(ack, body, respond):
     """Handle Report to Security Channel action"""
     ack()
     try:
-        LOGGER.info("Received action_report_security event: %s", body)
+        LOGGER.info("Received action_report_security event: %s", _redact_body(body))
         user_id = body["user"]["id"]
         chosen_action = body["actions"][0]
         action_value = json.loads(chosen_action["value"])
@@ -118,7 +137,7 @@ def handle_view_submission_events(ack, body, fail):
     """Handle Modal Form submission action"""
     ack()
     try:
-        LOGGER.info("Received tagging_modal event: %s", body)
+        LOGGER.info("Received tagging_modal event: %s", _redact_body(body))
         view_payload = body["view"]
         private_metadata = json.loads(view_payload["private_metadata"])
         channel_id = private_metadata["channel_id"]

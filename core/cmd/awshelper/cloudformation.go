@@ -312,7 +312,7 @@ func packageTemplate(templatePath, s3Bucket, packagedTemplatePath, profile, regi
 	logger.Debugln("📦 Packaging CloudFormation template...")
 	debugMode := os.Getenv("DEBUG") == "true"
 
-	cmd := exec.Command("aws", "cloudformation", "package",
+	cmd := exec.Command("aws", "cloudformation", "package", // #nosec G204 -- fixed executable with argv-only arguments.
 		"--template-file", templatePath,
 		"--s3-bucket", s3Bucket,
 		"--output-template-file", packagedTemplatePath,

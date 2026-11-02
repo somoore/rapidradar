@@ -97,6 +97,8 @@ RapidRadar is not only an alerting tool. It uses preventive controls where AWS c
 
 Service Control Policies can block launches or creations that violate organization rules, including missing required tags, EC2 without IMDSv2, EC2 with public IPs, unencrypted EBS volumes, load balancers, Elastic IP allocation, unencrypted RDS, IAM users, and public EBS snapshots. Bypass tags can be configured for approved exceptions, and bypass usage can still alert.
 
+AWS evaluates `aws:TagKeys` over the whole request, so an approved-exception tag placed on any resource in a multi-resource `RunInstances` call satisfies the exception at the SCP layer. Because a CloudFormation template cannot build a per-resource condition key from a parameter, this is compensated by the bypass detection in `run_instances`, which reads only the `instance` (IMDSv2), `network-interface` (public IP) and `volume` (encryption) tag specifications and raises a High finding when the bypass was supplied elsewhere.
+
 Security foundation features such as GuardDuty, Inspector, Security Hub, default EBS encryption, CloudTrail, and VPC Flow Logs can be enabled across accounts and regions.
 
 ### 3. Event Collection
@@ -136,6 +138,18 @@ Some remediation can be automatic. Other actions are exposed through Slack so en
 When Slack interactivity is enabled, RapidRadar deploys API Gateway, WAF, a request verifier, a response handler, and a background task runner. Slack actions are validated, converted into a small action payload, then executed asynchronously by the background Lambda through the Slack-specific cross-account role.
 
 This keeps the user experience simple while keeping destructive AWS actions behind role boundaries and target-account validation.
+
+#### Slack request authentication
+
+The API Gateway REQUEST authorizer is a pre-filter, not an authenticator. API Gateway does not expose
+the request body to a REQUEST authorizer, so the authorizer cannot compute Slack's
+`v0:<timestamp>:<body>` HMAC; it only checks that `X-Slack-Signature` has the expected shape and that
+`X-Slack-Request-Timestamp` is finite and no older than 300 seconds. The authoritative check is
+`verify_slack_request` in
+[`responses_handler/helper.py`](../core/cf/deployment/lambdas/slack_interactivity/responses_handler/helper.py),
+which recomputes the HMAC with the signing secret and compares it in constant time before any action
+is taken. WAF rate-limits the endpoint (500 requests / 5 minutes / IP). Do not remove the handler
+check on the assumption that the authorizer performed it.
 
 ### 8. Trust Boundaries
 

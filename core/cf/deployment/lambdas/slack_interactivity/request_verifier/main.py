@@ -1,9 +1,16 @@
+import math
 import re
 import time
 from logger import LOGGER
 
 SLACK_SIGNATURE_PATTERN = re.compile(r"^v0=[a-fA-F0-9]{64}$")
 
+# NOTE: this REQUEST authorizer is a cheap pre-filter, NOT authentication. API Gateway REQUEST
+# authorizers do not receive the request body, so the HMAC over `v0:<timestamp>:<body>` cannot be
+# computed here. The authoritative Slack signature check is performed by
+# responses_handler.verify_slack_request (constant-time compare, 300 s window) before any action is
+# taken. Keep both: this filter rejects malformed/expired envelopes at the edge and WAF rate-limits
+# the endpoint.
 def lambda_handler(event, context):
     LOGGER.info("Received Slack authorizer request for method ARN: %s", event.get('methodArn', 'unknown'))
 
@@ -22,8 +29,11 @@ def lambda_handler(event, context):
     except ValueError:
         LOGGER.error("Unauthorized: Invalid timestamp.")
         return generate_policy('user', 'Deny', event['methodArn'])
+    if not math.isfinite(ts):
+        LOGGER.error("Unauthorized: Invalid timestamp.")
+        return generate_policy('user', 'Deny', event['methodArn'])
 
-    if abs(time.time() - float(slack_timestamp)) > 300:
+    if abs(time.time() - ts) > 300:
         LOGGER.error("Unauthorized: Request expired.")
         return generate_policy('user', 'Deny', event['methodArn'])
     LOGGER.info("Request verified successfully!")

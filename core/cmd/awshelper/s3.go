@@ -75,37 +75,56 @@ func uploadTemplateToS3Bucket(client *s3.Client, cfgRegion, bucketName, bucketKe
 	return templateUrl, nil
 }
 
-func emptyS3Bucket(client *s3.Client, bucketName string) error {
-	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+// s3BucketEmptier is the subset of the S3 API needed to empty a bucket.
+type s3BucketEmptier interface {
+	s3.ListObjectVersionsAPIClient
+	DeleteObjects(context.Context, *s3.DeleteObjectsInput, ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
+}
+
+// emptyS3Bucket permanently deletes every object version and delete marker in the bucket.
+// Deleting only the current keys of a versioned bucket just adds delete markers, which leaves
+// the bucket non-empty and makes DeleteBucket fail with BucketNotEmpty. ListObjectVersions also
+// covers unversioned buckets, whose objects are returned with the "null" version id.
+func emptyS3Bucket(client s3BucketEmptier, bucketName string) error {
+	paginator := s3.NewListObjectVersionsPaginator(client, &s3.ListObjectVersionsInput{
 		Bucket: aws.String(bucketName),
 	})
 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			return fmt.Errorf("failed to list objects: %w", err)
+			return fmt.Errorf("failed to list object versions: %w", err)
 		}
 
-		// Collect object identifiers for deletion
-		var objects []s3Types.ObjectIdentifier
-		for _, obj := range page.Contents {
-			objects = append(objects, s3Types.ObjectIdentifier{Key: obj.Key})
+		// A page holds at most 1000 versions plus delete markers combined, which matches the
+		// DeleteObjects batch limit.
+		objects := make([]s3Types.ObjectIdentifier, 0, len(page.Versions)+len(page.DeleteMarkers))
+		for _, version := range page.Versions {
+			objects = append(objects, s3Types.ObjectIdentifier{Key: version.Key, VersionId: version.VersionId})
 		}
-		// Skip if no objects
+		for _, marker := range page.DeleteMarkers {
+			objects = append(objects, s3Types.ObjectIdentifier{Key: marker.Key, VersionId: marker.VersionId})
+		}
 		if len(objects) == 0 {
-			break
+			continue
 		}
 
-		// Delete objects in batch
-		_, err = client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
+		output, err := client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
 			Bucket: aws.String(bucketName),
-			Delete: &s3Types.Delete{Objects: objects},
+			Delete: &s3Types.Delete{Objects: objects, Quiet: aws.Bool(true)},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to delete objects: %w", err)
 		}
+		// DeleteObjects reports per-key failures in the response body, not as an error.
+		if output != nil && len(output.Errors) > 0 {
+			first := output.Errors[0]
+			return fmt.Errorf("failed to delete %d object version(s), first %s (version %s): %s %s",
+				len(output.Errors), aws.ToString(first.Key), aws.ToString(first.VersionId),
+				aws.ToString(first.Code), aws.ToString(first.Message))
+		}
 	}
-	logger.Debugf("✅ All objects deleted from bucket '%s'.\n", bucketName)
+	logger.Debugf("✅ All object versions deleted from bucket '%s'.\n", bucketName)
 	return nil
 }
 

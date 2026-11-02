@@ -174,6 +174,8 @@ Resources:
   SecurityGroupTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-security-groups"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -286,6 +288,8 @@ Resources:
   IAMUsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-iam-users"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -346,6 +350,8 @@ Resources:
   S3BucketsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-s3-buckets"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -406,6 +412,8 @@ Resources:
   RootIAMLoginsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-root-iam-logins"
       AttributeDefinitions:
       - AttributeName: event_id
@@ -580,6 +588,8 @@ Resources:
     Condition: IsEnabledStoppedEC2InstancesDetection
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-unused-ec2-instances"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -645,6 +655,8 @@ Resources:
     Condition: IsEnabledUnusedSecurityGroupsDetection
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-unused-security-groups"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -710,6 +722,8 @@ Resources:
     Condition: IsEnabledUnusedEBSVolumesDetection
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-unused-ebs-volumes"
       AttributeDefinitions:
       - AttributeName: account_id
@@ -774,6 +788,8 @@ Resources:
   RemediatedResourcesTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-remediated-resources"
       AttributeDefinitions:
       - AttributeName: resource_id
@@ -835,6 +851,8 @@ Resources:
     Condition: DeployCMDBProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-active-resources"
       AttributeDefinitions:
       - AttributeName: identifier
@@ -958,6 +976,8 @@ Resources:
     Condition: DeployCMDBProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-deleted-resources"
       AttributeDefinitions:
       - AttributeName: identifier
@@ -1023,6 +1043,8 @@ Resources:
     Condition: DeployCMDBProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-daily-user-cost-reports"
       AttributeDefinitions:
       - AttributeName: user
@@ -1088,6 +1110,8 @@ Resources:
     Condition: DeployCMDBProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-weekly-user-cost-reports"
       AttributeDefinitions:
       - AttributeName: user
@@ -1153,6 +1177,8 @@ Resources:
     Condition: DeployCMDBProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-monthly-user-cost-reports"
       AttributeDefinitions:
       - AttributeName: user
@@ -1218,6 +1244,8 @@ Resources:
     Condition: DeployIPTrackerProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-ip-correlation"
       AttributeDefinitions:
       - AttributeName: sso_user_id
@@ -1337,6 +1365,8 @@ Resources:
     Condition: DeployIPTrackerProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-sso-users-ip-history"
       AttributeDefinitions:
       - AttributeName: sso_user_id
@@ -1456,6 +1486,8 @@ Resources:
     Condition: DeployIAMKeyPairAccessTrackerProject
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-iam-keypair-access-tracker"
       AttributeDefinitions:
       - AttributeName: iam_user
@@ -1581,6 +1613,8 @@ Resources:
     Condition: TrackSSMAssociationFailures
     Type: AWS::DynamoDB::Table
     Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       TableName: !Sub "${ProjectName}-ssm-doc-assoc-failure-tracker"
       AttributeDefinitions:
       - AttributeName: ssm_document_name

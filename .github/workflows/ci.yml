@@ -33,13 +33,13 @@ jobs:
         run: go vet ./...
 
       - name: Test Go packages
-        run: go test ./...
+        run: go test -race -count=1 ./...
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
       - name: Run gosec
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.9 -quiet ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -quiet ./...
 
   python:
     name: Python checks (RapidRadar lambdas)
@@ -56,6 +56,16 @@ jobs:
       - name: Compile deployment Python
         run: python -m compileall -q core/cf/deployment
 
+      - name: Validate IaC security policy
+        run: |
+          python -m unittest scripts/test_check_iac_policy.py
+          python scripts/check_iac_policy.py
+
+      - name: Run deployment unit tests
+        run: |
+          python -m unittest discover -s core/cf/deployment/lambdas/process_events/tests -p 'test_*.py'
+          python -m unittest discover -s core/cf/deployment/lambdas/slack_interactivity/tests -p 'test_*.py'
+
       - name: Validate central event bus allowlist
         run: |
           python -m unittest scripts/test_check_event_bus_policy.py
@@ -66,6 +76,26 @@ jobs:
           python -m pip install --disable-pip-version-check --require-hashes --dry-run -r core/cf/deployment/requirements.lock
           python -m pip install --disable-pip-version-check --require-hashes --dry-run -r core/cf/deployment/slack_socket_app/requirements.lock
           python -m pip install --disable-pip-version-check --require-hashes --dry-run -r core/cf/deployment/sfn/sso_manager/build/requirements.lock
+
+  iac:
+    name: CloudFormation lint
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: "3.11"
+
+      - name: Install cfn-lint
+        run: python -m pip install --disable-pip-version-check --no-cache-dir cfn-lint==1.59.0
+
+      - name: Lint CloudFormation templates
+        run: |
+          mapfile -t templates < <(git ls-files 'core/cf/templates/*.yml' 'core/cf/templates/**/*.yml')
+          cfn-lint --non-zero-exit-code error "${templates[@]}"
 
   supply-chain:
     name: Supply-chain policy

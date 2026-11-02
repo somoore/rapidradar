@@ -97,6 +97,9 @@ func Ask(prompt string) string {
 
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt: prompt + " ",
+		// SEC: every Ask() call site collects a secret or credential value; do not echo it to the
+		// terminal or scrollback.
+		EnableMask: true,
 	})
 	if err != nil {
 		panic(fmt.Errorf("unable to get user input: %w", err))

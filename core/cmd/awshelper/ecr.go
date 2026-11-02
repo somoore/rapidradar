@@ -102,7 +102,7 @@ func BuildAndPushDockerImage(profile, repoName, imageUri, contextDir, automation
 	debugMode := os.Getenv("DEBUG") == "true"
 
 	var password bytes.Buffer
-	passwordCmd := exec.Command("aws", "ecr", "get-login-password", "--profile", profile, "--region", region)
+	passwordCmd := exec.Command("aws", "ecr", "get-login-password", "--profile", profile, "--region", region) // #nosec G204 -- fixed executable with argv-only arguments.
 	passwordCmd.Stdout = &password
 	if debugMode {
 		passwordCmd.Stderr = os.Stderr
@@ -120,11 +120,11 @@ func BuildAndPushDockerImage(profile, repoName, imageUri, contextDir, automation
 	logger.Debugln("✅ Logged in successfully!")
 
 	logger.Debugf("🐳 Building and Pushing Image to AWS ECR '%s'...", repoName)
-	buildCmd := exec.Command("docker", "build", "--platform=linux/amd64", "-t", imageUri, contextDir)
+	buildCmd := exec.Command("docker", "build", "--platform=linux/amd64", "-t", imageUri, contextDir) // #nosec G204 -- fixed executable with argv-only arguments.
 	if err = runCommand(buildCmd, debugMode); err != nil {
 		return fmt.Errorf("failed to build Docker image: %w", err)
 	}
-	pushCmd := exec.Command("docker", "push", imageUri)
+	pushCmd := exec.Command("docker", "push", imageUri) // #nosec G204 -- fixed executable with argv-only arguments.
 	if err = runCommand(pushCmd, debugMode); err != nil {
 		return fmt.Errorf("failed to push Docker image: %w", err)
 	}
