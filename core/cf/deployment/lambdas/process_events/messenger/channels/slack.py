@@ -6,8 +6,9 @@ from messenger.sanitize import escape_mrkdwn, escape_mrkdwn_args, harden_message
 class SlackMessenger():
     def __init__(self, account_id, account_name, org_name, region):
         self.account_id = account_id
-        self.account_name = escape_mrkdwn(account_name) if account_name is not None else account_name
-        self.org_name = escape_mrkdwn(org_name) if org_name is not None else org_name
+        # Kept raw: Messages escapes them once when it builds the text.
+        self.account_name = account_name
+        self.org_name = org_name
         self.region = region
 
     def get_message(self, alert_id, message_params):
