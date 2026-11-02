@@ -6,6 +6,7 @@ from scripts.check_iac_policy import (
     ROOT,
     STACKSET,
     TEMPLATES,
+    check_alarm_topic_encryption,
     check_cross_account_roles,
     check_dockerfile_user,
     check_lambda_permissions,
@@ -62,6 +63,44 @@ Resources:
 """
         errors = check_lambda_permissions(Path("f.yml"), template)
         self.assertTrue(any("PrincipalOrgID" in error for error in errors))
+
+
+ALARM_TOPIC_TEMPLATE = """
+Resources:
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      KmsMasterKeyId: {key}
+  Alarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: FunctionName
+"""
+
+
+class AlarmTopicEncryptionTest(unittest.TestCase):
+    def test_aws_managed_key_on_alarm_topic_is_rejected(self):
+        template = ALARM_TOPIC_TEMPLATE.format(key="alias/aws/sns")
+        errors = check_alarm_topic_encryption(Path("f.yml"), template)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Topic", errors[0])
+
+    def test_customer_managed_key_on_alarm_topic_passes(self):
+        template = ALARM_TOPIC_TEMPLATE.format(key="!GetAtt TopicKey.Arn")
+        self.assertEqual(check_alarm_topic_encryption(Path("f.yml"), template), [])
+
+    def test_aws_managed_key_on_topic_without_alarms_passes(self):
+        template = """
+Resources:
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      KmsMasterKeyId: alias/aws/sns
+"""
+        self.assertEqual(check_alarm_topic_encryption(Path("f.yml"), template), [])
 
 
 class QueuePolicyTest(unittest.TestCase):
@@ -165,6 +204,7 @@ class RepositoryStateTest(unittest.TestCase):
             text = path.read_text()
             errors.extend(check_lambda_permissions(path, text))
             errors.extend(check_queue_policies(path, text))
+            errors.extend(check_alarm_topic_encryption(path, text))
             if path == STACKSET:
                 errors.extend(check_cross_account_roles(path, text))
         self.assertEqual(errors, [])

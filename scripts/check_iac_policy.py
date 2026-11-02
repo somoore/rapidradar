@@ -10,6 +10,9 @@ checks encode the invariants that regressions used to break:
   source account and ARN;
 * the cross-account roles and their permissions boundaries contain no IAM escalation primitives;
 * cross-account role trust policies contain only the conditioned automation-account statement;
+* SNS topics that receive CloudWatch alarm actions are not encrypted with the AWS-managed
+  ``alias/aws/sns`` key, whose policy cannot grant ``cloudwatch.amazonaws.com`` and therefore
+  silently drops alarm notifications;
 * container images drop to a non-root ``USER``.
 
 The parser is deliberately dependency-free: CI runs it with the stock Python runtime.
@@ -111,6 +114,52 @@ def check_queue_policies(path: Path, text: str) -> list[str]:
     return errors
 
 
+ALARM_ACTION_KEYS = ("AlarmActions:", "OKActions:", "InsufficientDataActions:")
+AWS_MANAGED_SNS_KEY = "alias/aws/sns"
+
+
+def alarm_action_targets(lines: list[str]) -> set[str]:
+    """Logical ids referenced (``!Ref X`` / ``- !Ref X``) under an alarm action list."""
+    targets = set()
+    for start, line in enumerate(lines):
+        if line.strip() not in ALARM_ACTION_KEYS:
+            continue
+        base = indent(line)
+        for item in lines[start + 1:]:
+            if item.strip() and indent(item) <= base and not item.strip().startswith("-"):
+                break
+            match = re.search(r"!Ref\s+([A-Za-z0-9]+)", item)
+            if match:
+                targets.add(match.group(1))
+    return targets
+
+
+def check_alarm_topic_encryption(path: Path, text: str) -> list[str]:
+    errors = []
+    blocks = resource_blocks(text)
+    alarm_targets = set()
+    for block in blocks.values():
+        body = "\n".join(block)
+        if "Type: AWS::CloudWatch::Alarm" in body:
+            alarm_targets |= alarm_action_targets(block)
+    for name in sorted(alarm_targets):
+        block = blocks.get(name)
+        if block is None:
+            continue
+        body = "\n".join(block)
+        managed_key = any(
+            line.split("#", 1)[0].strip().replace("'", "").replace('"', "")
+            == f"KmsMasterKeyId: {AWS_MANAGED_SNS_KEY}"
+            for line in block
+        )
+        if "Type: AWS::SNS::Topic" in body and managed_key:
+            errors.append(
+                f"{path}: {name} receives CloudWatch alarm actions but is encrypted with "
+                f"{AWS_MANAGED_SNS_KEY}; use a customer-managed key that grants cloudwatch.amazonaws.com"
+            )
+    return errors
+
+
 def check_cross_account_roles(path: Path, text: str) -> list[str]:
     errors = []
     blocks = resource_blocks(text)
@@ -160,6 +209,7 @@ def main() -> int:
         text = path.read_text()
         errors.extend(check_lambda_permissions(path, text))
         errors.extend(check_queue_policies(path, text))
+        errors.extend(check_alarm_topic_encryption(path, text))
         if path == STACKSET:
             errors.extend(check_cross_account_roles(path, text))
     for path in DOCKERFILES:

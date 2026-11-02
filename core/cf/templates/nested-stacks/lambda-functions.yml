@@ -1112,7 +1112,42 @@ Resources:
     Properties:
       TopicName: !Sub ${ProjectName}-cloudwatch-alarms
       DisplayName: !Sub ${ProjectName} lambda error alerts topic
-      KmsMasterKeyId: alias/aws/sns
+      # CloudWatch alarms can only publish to an encrypted topic whose key policy grants
+      # cloudwatch.amazonaws.com; the AWS-managed alias/aws/sns key cannot be granted that.
+      KmsMasterKeyId: !GetAtt CloudWatchAlarmsSnsTopicKey.Arn
+  CloudWatchAlarmsSnsTopicKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "${ProjectName} CloudWatch alarms SNS topic key"
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: !Sub "${ProjectName}-cloudwatch-alarms-sns-key"
+        Statement:
+        - Sid: Enable IAM User Permissions
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+          Action: kms:*
+          Resource: '*'
+        - Sid: Allow CloudWatch alarms to publish to the encrypted topic
+          Effect: Allow
+          Principal:
+            Service: cloudwatch.amazonaws.com
+          Action:
+          - kms:GenerateDataKey*
+          - kms:Decrypt
+          Resource: '*'
+          Condition:
+            StringEquals:
+              aws:SourceAccount: !Ref AWS::AccountId
+            ArnLike:
+              aws:SourceArn: !Sub arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:*
+  CloudWatchAlarmsSnsTopicKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-cloudwatch-alarms-sns-key
+      TargetKeyId: !Ref CloudWatchAlarmsSnsTopicKey
   CloudWatchAlarmsSubscriptionsCreatorLambdaRole:
     Type: AWS::IAM::Role
     Properties:
