@@ -1,0 +1,4 @@
+# Reviewed non-credentials: example keys, test fixtures and documented
+# placeholders. The working tree keeps them deliberately (tests and docs);
+# these fingerprints cover the historical commits that still contain them.
+4f30bd57688a4042c69c645b906db8b04f3b70a4:core/env/common.yml:generic-api-key:35
